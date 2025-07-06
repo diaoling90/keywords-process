@@ -93,19 +93,32 @@ app.get('/api/keywords', async (req, res) => {
         const { before } = req.query;
         let query;
         
+        // 基础查询条件：不显示被忽略的关键词
+        const baseQuery = {
+            $or: [
+                { ignore: { $exists: false } },
+                { ignore: false }
+            ]
+        };
+        
         if (before) {
             // 如果有过滤时间，查询：使用时间为null的关键词（总是显示） OR 使用时间早于指定时间的关键词
             const beforeDate = new Date(before);
             query = {
-                $or: [
-                    { last_used_time: { $exists: false } },
-                    { last_used_time: null },
-                    { last_used_time: { $lt: beforeDate } }
+                $and: [
+                    baseQuery,
+                    {
+                        $or: [
+                            { last_used_time: { $exists: false } },
+                            { last_used_time: null },
+                            { last_used_time: { $lt: beforeDate } }
+                        ]
+                    }
                 ]
             };
         } else {
-            // 如果没有过滤时间，显示所有关键词
-            query = {};
+            // 如果没有过滤时间，显示所有未被忽略的关键词
+            query = baseQuery;
         }
 
         const keywords = await db.collection(COLLECTION_NAME).find(query).toArray();
@@ -220,6 +233,32 @@ app.put('/api/keywords/use-batch', async (req, res) => {
         res.json({ success: true });
     } catch (error) {
         res.status(500).json({ error: '批量更新使用时间失败' });
+    }
+});
+
+// 忽略关键词
+app.put('/api/keywords/ignore', async (req, res) => {
+    try {
+        const { keywordId } = req.body;
+        const { ObjectId } = require('mongodb');
+        
+        if (!keywordId) {
+            return res.status(400).json({ success: false, error: '关键词ID无效' });
+        }
+
+        const result = await db.collection(COLLECTION_NAME).updateOne(
+            { _id: new ObjectId(keywordId) },
+            { $set: { ignore: true, ignore_time: new Date() } }
+        );
+
+        if (result.matchedCount === 0) {
+            return res.status(404).json({ success: false, error: '关键词不存在' });
+        }
+
+        res.json({ success: true, message: '关键词已忽略' });
+    } catch (error) {
+        console.error('忽略关键词失败:', error);
+        res.status(500).json({ success: false, error: error.message });
     }
 });
 

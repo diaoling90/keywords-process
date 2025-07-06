@@ -123,7 +123,8 @@
         }
 
         .keyword-item {
-            display: inline-block;
+            display: inline-flex;
+            align-items: center;
             background-color: #f8f9fa;
             padding: 4px 8px;
             margin: 2px;
@@ -134,6 +135,37 @@
             cursor: pointer;
             transition: all 0.2s ease;
             user-select: none;
+            position: relative;
+        }
+
+        .keyword-text {
+            margin-right: 6px;
+        }
+
+        .ignore-btn {
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background-color: #dc3545;
+            color: white;
+            border: none;
+            cursor: pointer;
+            font-size: 10px;
+            line-height: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s ease;
+            margin-left: 4px;
+        }
+
+        .ignore-btn:hover {
+            background-color: #c82333;
+            transform: scale(1.1);
+        }
+
+        .ignore-btn:active {
+            transform: scale(0.9);
         }
 
         .keyword-item:hover {
@@ -414,10 +446,18 @@
                         <div class="keyword-list">
                             ${allKeywords.map((keyword, idx) => {
                                 const safeKeyword = escapeHtml(keyword);
-                                return `<span class="keyword-item ${idx === 0 ? 'main-keyword' : ''}" 
+                                const keywordId = keywordIds[idx];
+                                const isMainKeyword = idx === 0;
+                                
+                                return `<span class="keyword-item ${isMainKeyword ? 'main-keyword' : ''}" 
                                               data-keyword="${safeKeyword}"
                                               onclick="copyKeywordFromElement(this)" 
-                                              title="单击复制">${safeKeyword}</span>`;
+                                              title="单击复制">
+                                            <span class="keyword-text">${safeKeyword}</span>
+                                            ${!isMainKeyword && keywordId ? `<button class="ignore-btn" 
+                                                                                    title="忽略此关键词"
+                                                                                    onclick="ignoreKeyword(event, '${keywordId}')">×</button>` : ''}
+                                        </span>`;
                             }).join('')}
                         </div>
                         <button class="trend-btn" 
@@ -608,6 +648,11 @@
 
         // 从元素复制关键词
         async function copyKeywordFromElement(element) {
+            // 检查是否点击了忽略按钮
+            if (element.classList.contains('ignore-btn')) {
+                return;
+            }
+            
             const keyword = element.dataset.keyword;
             console.log('准备复制关键词:', keyword);
             
@@ -617,6 +662,34 @@
             }
             
             await copyKeyword(keyword, element);
+        }
+
+        // 忽略关键词
+        async function ignoreKeyword(event, keywordId) {
+            // 阻止事件冒泡，防止触发复制功能
+            event.stopPropagation();
+            
+            try {
+                const result = await fetch('/api/keywords/ignore', {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ keywordId })
+                });
+
+                const data = await result.json();
+                
+                if (data.success) {
+                    showMessage('关键词已忽略', 'success');
+                    // 重新加载数据以更新页面
+                    await loadKeywords();
+                } else {
+                    showMessage('忽略失败: ' + data.error, 'error');
+                }
+            } catch (error) {
+                showMessage('忽略失败: ' + error.message, 'error');
+            }
         }
 
         // 复制关键词
