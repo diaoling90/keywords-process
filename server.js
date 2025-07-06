@@ -286,6 +286,35 @@ app.post('/api/start-import-tool', (req, res) => {
     }
 });
 
+// 调试API - 检查服务器状态
+app.get('/api/debug', async (req, res) => {
+    try {
+        const serverStatus = {
+            status: 'running',
+            timestamp: new Date().toISOString(),
+            version: '1.1.0',
+            database: 'disconnected',
+            collection: COLLECTION_NAME,
+            port: PORT
+        };
+        
+        // 检查数据库连接
+        try {
+            const keywordCount = await db.collection(COLLECTION_NAME).countDocuments();
+            serverStatus.database = 'connected';
+            serverStatus.totalKeywords = keywordCount;
+        } catch (error) {
+            serverStatus.database = 'error: ' + error.message;
+        }
+        
+        console.log('调试API被调用:', serverStatus);
+        res.json(serverStatus);
+    } catch (error) {
+        console.error('调试API错误:', error);
+        res.status(500).json({ success: false, message: '服务器错误' });
+    }
+});
+
 // 启动服务器
 app.listen(PORT, async () => {
     await connectToMongoDB();
