@@ -44,6 +44,7 @@
             display: flex;
             align-items: center;
             gap: 8px;
+            flex-wrap: wrap;
         }
 
         .input-group label {
@@ -52,12 +53,17 @@
             white-space: nowrap;
         }
 
-        input[type="text"], input[type="datetime-local"] {
+        input[type="text"], input[type="datetime-local"], select {
             padding: 8px 12px;
             border: 1px solid #ddd;
             border-radius: 4px;
             font-size: 14px;
             min-width: 200px;
+            background-color: white;
+        }
+
+        #newKeyword {
+            min-width: 150px;
         }
 
         button {
@@ -125,6 +131,33 @@
             font-size: 12px;
             color: #495057;
             border: 1px solid #dee2e6;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            user-select: none;
+        }
+
+        .keyword-item:hover {
+            background-color: #e9ecef;
+            transform: translateY(-1px);
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .keyword-item:active {
+            transform: translateY(0);
+            background-color: #dee2e6;
+        }
+
+        .keyword-item.copied {
+            background-color: #d4edda;
+            border-color: #c3e6cb;
+            color: #155724;
+            animation: copySuccess 0.5s ease;
+        }
+
+        @keyframes copySuccess {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
         }
 
         .keyword-item.main-keyword {
@@ -203,7 +236,10 @@
         <div class="input-section">
             <div class="input-group">
                 <label for="mainKeyword">主关键词:</label>
-                <input type="text" id="mainKeyword" placeholder="请输入关键词">
+                <select id="mainKeyword">
+                    <option value="">请选择关键词</option>
+                </select>
+                <input type="text" id="newKeyword" placeholder="或输入新关键词">
                 <button onclick="saveMainKeyword()">保存</button>
             </div>
             
@@ -211,6 +247,7 @@
                 <label for="filterTime">过滤时间:</label>
                 <input type="datetime-local" id="filterTime">
                 <button class="refresh-btn" onclick="loadKeywords()">刷新</button>
+                <button onclick="clearFilter()">清空过滤</button>
             </div>
             
             <div class="input-group">
@@ -253,8 +290,22 @@
             try {
                 const response = await fetch('/api/defaultkw');
                 const keywords = await response.json();
+                
+                const selectElement = document.getElementById('mainKeyword');
+                // 清空现有选项
+                selectElement.innerHTML = '<option value="">请选择关键词</option>';
+                
+                // 添加关键词选项
+                keywords.forEach(keyword => {
+                    const option = document.createElement('option');
+                    option.value = keyword;
+                    option.textContent = keyword;
+                    selectElement.appendChild(option);
+                });
+                
+                // 默认选择第一个关键词
                 if (keywords.length > 0) {
-                    document.getElementById('mainKeyword').value = keywords[0];
+                    selectElement.value = keywords[0];
                     mainKeyword = keywords[0];
                 }
             } catch (error) {
@@ -264,9 +315,14 @@
 
         // 保存主关键词
         async function saveMainKeyword() {
-            const keyword = document.getElementById('mainKeyword').value.trim();
+            const selectedKeyword = document.getElementById('mainKeyword').value.trim();
+            const newKeyword = document.getElementById('newKeyword').value.trim();
+            
+            // 优先使用新输入的关键词，如果没有则使用选择的关键词
+            const keyword = newKeyword || selectedKeyword;
+            
             if (!keyword) {
-                showMessage('请输入关键词', 'error');
+                showMessage('请选择或输入关键词', 'error');
                 return;
             }
 
@@ -283,7 +339,13 @@
                 if (result.success) {
                     mainKeyword = keyword;
                     showMessage('关键词保存成功', 'success');
-                    await loadKeywords(); // 重新加载卡片
+                    
+                    // 清空新输入框
+                    document.getElementById('newKeyword').value = '';
+                    
+                    // 重新加载下拉选项和卡片
+                    await loadDefaultKeyword();
+                    await loadKeywords();
                 } else {
                     showMessage('保存失败: ' + result.error, 'error');
                 }
@@ -323,7 +385,11 @@
         // 生成卡片
         function generateCards() {
             const cardsContainer = document.getElementById('cardsContainer');
-            const currentMainKeyword = document.getElementById('mainKeyword').value.trim();
+            const selectedKeyword = document.getElementById('mainKeyword').value.trim();
+            const newKeyword = document.getElementById('newKeyword').value.trim();
+            
+            // 获取当前主关键词
+            const currentMainKeyword = newKeyword || selectedKeyword || mainKeyword;
             
             if (dbKeywords.length === 0) {
                 cardsContainer.innerHTML = '<div class="loading">暂无关键词数据</div>';
@@ -346,11 +412,18 @@
                 html += `
                     <div class="keyword-card">
                         <div class="keyword-list">
-                            ${allKeywords.map((keyword, idx) => 
-                                `<span class="keyword-item ${idx === 0 ? 'main-keyword' : ''}">${keyword}</span>`
-                            ).join('')}
+                            ${allKeywords.map((keyword, idx) => {
+                                const safeKeyword = escapeHtml(keyword);
+                                return `<span class="keyword-item ${idx === 0 ? 'main-keyword' : ''}" 
+                                              data-keyword="${safeKeyword}"
+                                              onclick="copyKeywordFromElement(this)" 
+                                              title="单击复制">${safeKeyword}</span>`;
+                            }).join('')}
                         </div>
-                        <button class="trend-btn" onclick="openGoogleTrends(${JSON.stringify(allKeywords)}, ${JSON.stringify(keywordIds)})">
+                        <button class="trend-btn" 
+                                data-keywords='${JSON.stringify(allKeywords)}' 
+                                data-keyword-ids='${JSON.stringify(keywordIds)}'
+                                onclick="openGoogleTrendsFromButton(this)">
                             查看 Google 趋势
                         </button>
                     </div>
@@ -378,9 +451,25 @@
             return keyword;
         }
 
+        // 从按钮元素打开 Google Trends
+        async function openGoogleTrendsFromButton(buttonElement) {
+            try {
+                const keywords = JSON.parse(buttonElement.dataset.keywords);
+                const keywordIds = JSON.parse(buttonElement.dataset.keywordIds);
+                await openGoogleTrends(keywords, keywordIds, buttonElement);
+            } catch (error) {
+                console.error('解析按钮数据失败:', error);
+                showMessage('打开 Google Trends 失败', 'error');
+            }
+        }
+
         // 打开 Google Trends
-        async function openGoogleTrends(keywords, keywordIds) {
-            const button = event.target;
+        async function openGoogleTrends(keywords, keywordIds, buttonElement) {
+            console.log('openGoogleTrends 被调用');
+            console.log('keywords:', keywords);
+            console.log('keywordIds:', keywordIds);
+            
+            const button = buttonElement;
             const originalText = button.textContent;
             
             // 显示加载状态
@@ -446,8 +535,16 @@
             document.getElementById('totalKeywords').textContent = keywordCount;
         }
 
-        // 监听主关键词输入框变化
-        document.getElementById('mainKeyword').addEventListener('input', () => {
+        // 监听主关键词变化
+        document.getElementById('mainKeyword').addEventListener('change', () => {
+            // 如果有卡片，重新生成以更新主关键词显示
+            if (dbKeywords.length > 0) {
+                generateCards();
+            }
+        });
+
+        // 监听新输入框变化
+        document.getElementById('newKeyword').addEventListener('input', () => {
             // 如果有卡片，重新生成以更新主关键词显示
             if (dbKeywords.length > 0) {
                 generateCards();
@@ -486,7 +583,7 @@
                 
                 3. 在弹出的界面中：
                    - 选择 WPS/Excel 文件
-                   - 设置关键词列名（默认为 'kw'）
+                   - 设置关键词列名（默认为 'Keyword'）
                    - 预览数据
                    - 导入到数据库
                 
@@ -494,6 +591,86 @@
             `;
             
             alert(instructions);
+        }
+
+        // 清空过滤条件
+        function clearFilter() {
+            document.getElementById('filterTime').value = '';
+            loadKeywords();
+        }
+
+        // HTML转义函数
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // 从元素复制关键词
+        async function copyKeywordFromElement(element) {
+            const keyword = element.dataset.keyword;
+            console.log('准备复制关键词:', keyword);
+            
+            if (!keyword) {
+                console.error('未找到关键词数据');
+                return;
+            }
+            
+            await copyKeyword(keyword, element);
+        }
+
+        // 复制关键词
+        async function copyKeyword(keyword, element) {
+            try {
+                console.log('开始复制:', keyword);
+                
+                // 使用现代的 Clipboard API
+                if (navigator.clipboard && window.isSecureContext) {
+                    await navigator.clipboard.writeText(keyword);
+                    console.log('使用 Clipboard API 复制成功');
+                } else {
+                    // 备用方案：使用传统的 execCommand
+                    const textArea = document.createElement('textarea');
+                    textArea.value = keyword;
+                    textArea.style.position = 'fixed';
+                    textArea.style.left = '-999999px';
+                    textArea.style.top = '-999999px';
+                    document.body.appendChild(textArea);
+                    textArea.focus();
+                    textArea.select();
+                    const success = document.execCommand('copy');
+                    textArea.remove();
+                    console.log('使用 execCommand 复制:', success ? '成功' : '失败');
+                }
+                
+                // 清除其他关键词的复制状态
+                document.querySelectorAll('.keyword-item.copied').forEach(item => {
+                    item.classList.remove('copied');
+                });
+                
+                // 为当前关键词添加复制状态
+                element.classList.add('copied');
+                console.log('添加复制状态样式');
+                
+                // 2秒后移除复制状态样式
+                setTimeout(() => {
+                    element.classList.remove('copied');
+                    console.log('移除复制状态样式');
+                }, 2000);
+                
+            } catch (error) {
+                console.error('复制失败:', error);
+                
+                // 如果复制失败，选中文本让用户手动复制
+                if (window.getSelection) {
+                    const selection = window.getSelection();
+                    const range = document.createRange();
+                    range.selectNodeContents(element);
+                    selection.removeAllRanges();
+                    selection.addRange(range);
+                    console.log('复制失败，已选中文本供手动复制');
+                }
+            }
         }
     </script>
 </body>

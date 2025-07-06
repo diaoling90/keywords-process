@@ -91,22 +91,67 @@ app.post('/api/defaultkw', (req, res) => {
 app.get('/api/keywords', async (req, res) => {
     try {
         const { before } = req.query;
-        let query = {};
+        let query;
         
         if (before) {
+            // 如果有过滤时间，查询：使用时间为null的关键词（总是显示） OR 使用时间早于指定时间的关键词
             const beforeDate = new Date(before);
             query = {
                 $or: [
                     { last_used_time: { $exists: false } },
+                    { last_used_time: null },
                     { last_used_time: { $lt: beforeDate } }
                 ]
             };
+        } else {
+            // 如果没有过滤时间，显示所有关键词
+            query = {};
         }
 
         const keywords = await db.collection(COLLECTION_NAME).find(query).toArray();
+        
+        // 添加调试信息
+        console.log('调试信息:');
+        console.log('- 过滤时间:', before || '未设置');
+        console.log('- 查询条件:', JSON.stringify(query));
+        console.log('- 查询结果数量:', keywords.length);
+        
+        // 获取统计信息
+        const totalCount = await db.collection(COLLECTION_NAME).countDocuments();
+        const unusedCount = await db.collection(COLLECTION_NAME).countDocuments({
+            $or: [
+                { last_used_time: { $exists: false } },
+                { last_used_time: null }
+            ]
+        });
+        const usedCount = await db.collection(COLLECTION_NAME).countDocuments({
+            last_used_time: { $ne: null, $exists: true }
+        });
+        
+        console.log('- 数据库总记录数:', totalCount);
+        console.log('- 未使用关键词数量:', unusedCount);
+        console.log('- 已使用关键词数量:', usedCount);
+        
         res.json(keywords);
     } catch (error) {
+        console.error('获取关键词失败:', error);
         res.status(500).json({ error: '获取关键词失败' });
+    }
+});
+
+// 测试API：获取所有关键词（不带过滤条件）
+app.get('/api/keywords/all', async (req, res) => {
+    try {
+        const keywords = await db.collection(COLLECTION_NAME).find({}).toArray();
+        console.log('获取所有关键词:', keywords.length, '条');
+        res.json({
+            total: keywords.length,
+            keywords: keywords.slice(0, 10), // 只返回前10条用于预览
+            sample: keywords.length > 0 ? keywords[0] : null // 返回一个样本数据
+        });
+    } catch (error) {
+        console.error('获取所有关键词失败:', error);
+        res.status(500).json({ error: '获取所有关键词失败' });
     }
 });
 

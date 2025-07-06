@@ -34,7 +34,7 @@ class KeywordImporter:
         
         # 界面变量
         self.selected_files = []
-        self.column_var = tk.StringVar(value="kw")
+        self.column_var = tk.StringVar(value="Keyword")
         self.status_var = tk.StringVar(value="就绪")
         self.progress_var = tk.DoubleVar()
         
@@ -72,7 +72,7 @@ class KeywordImporter:
         column_entry = tk.Entry(column_frame, textvariable=self.column_var, width=15)
         column_entry.pack(side="left", padx=10)
         
-        tk.Label(column_frame, text="(默认查找 'kw' 列)", 
+        tk.Label(column_frame, text="(默认查找 'Keyword' 列)", 
                 font=("Microsoft YaHei", 9), fg="gray").pack(side="left")
         
         # 操作按钮区域
@@ -90,6 +90,14 @@ class KeywordImporter:
         tk.Button(action_frame, text="查看数据库", 
                  command=self.view_database,
                  bg="#17a2b8", fg="white", font=("Microsoft YaHei", 11)).pack(side="left", padx=5)
+        
+        tk.Button(action_frame, text="测试数据库连接", 
+                 command=self.test_database_connection,
+                 bg="#6f42c1", fg="white", font=("Microsoft YaHei", 10)).pack(side="left", padx=5)
+        
+        tk.Button(action_frame, text="重新连接", 
+                 command=self.reconnect_database,
+                 bg="#6c757d", fg="white", font=("Microsoft YaHei", 10)).pack(side="left", padx=5)
         
         # 进度条
         progress_frame = tk.Frame(self.root)
@@ -123,14 +131,29 @@ class KeywordImporter:
     def connect_database(self):
         """连接数据库"""
         try:
-            self.client = MongoClient(MONGODB_URL)
+            self.log_message(f"🔗 正在连接数据库: {MONGODB_URL}")
+            self.client = MongoClient(MONGODB_URL, serverSelectionTimeoutMS=5000)
+            
+            # 测试连接
+            self.client.admin.command('ping')
+            
             self.db = self.client[DB_NAME]
             self.collection = self.db[COLLECTION_NAME]
+            
+            # 检查集合是否存在
+            collections = self.db.list_collection_names()
+            if COLLECTION_NAME not in collections:
+                self.log_message(f"⚠️ 集合 '{COLLECTION_NAME}' 不存在，将自动创建")
+            
             self.log_message("✅ 数据库连接成功")
             self.status_var.set("数据库已连接")
+            
         except Exception as e:
             self.log_message(f"❌ 数据库连接失败: {str(e)}")
             self.status_var.set("数据库连接失败")
+            self.client = None
+            self.db = None
+            self.collection = None
             
     def log_message(self, message):
         """添加日志信息"""
@@ -148,9 +171,15 @@ class KeywordImporter:
             ('所有文件', '*.*')
         ]
         
+        # 设置默认打开目录为项目目录
+        default_dir = r"D:\cursor\web\tools\keyword"
+        if not os.path.exists(default_dir):
+            default_dir = os.path.dirname(os.path.abspath(__file__))
+        
         files = filedialog.askopenfilenames(
             title="选择 WPS/Excel 文件",
-            filetypes=file_types
+            filetypes=file_types,
+            initialdir=default_dir
         )
         
         if files:
@@ -191,13 +220,18 @@ class KeywordImporter:
         """查找关键词列"""
         target_column = self.column_var.get().strip()
         
+        self.log_message(f"🔍 查找关键词列: '{target_column}'")
+        self.log_message(f"📋 可用列: {list(df.columns)}")
+        
         # 查找完全匹配的列
         if target_column in df.columns:
+            self.log_message(f"✅ 找到完全匹配的列: {target_column}")
             return target_column
             
         # 查找包含目标字符的列（不区分大小写）
         for col in df.columns:
             if target_column.lower() in str(col).lower():
+                self.log_message(f"✅ 找到包含目标字符的列: {col}")
                 return col
                 
         # 如果没找到，返回第一列
@@ -205,6 +239,7 @@ class KeywordImporter:
             self.log_message(f"⚠️ 未找到 '{target_column}' 列，使用第一列: {df.columns[0]}")
             return df.columns[0]
             
+        self.log_message("❌ 没有找到任何列")
         return None
         
     def preview_data(self):
@@ -273,105 +308,143 @@ class KeywordImporter:
         
     def import_data(self):
         """导入数据到数据库"""
-        if not self.selected_files:
-            messagebox.showwarning("警告", "请先选择文件")
+        try:
+            self.log_message("🔍 开始导入数据检查...")
+            
+            if not self.selected_files:
+                self.log_message("❌ 未选择文件")
+                messagebox.showwarning("警告", "请先选择文件")
+                return
+                
+            if self.collection is None:
+                self.log_message("❌ 数据库未连接")
+                messagebox.showerror("错误", "数据库未连接")
+                return
+                
+            # 确认导入
+            result = messagebox.askyesno("确认", "确定要导入数据到数据库吗？")
+            if not result:
+                self.log_message("❌ 用户取消导入")
+                return
+                
+            self.log_message("✅ 开始导入流程...")
+            
+        except Exception as e:
+            self.log_message(f"❌ 导入前检查失败: {str(e)}")
+            messagebox.showerror("错误", f"导入前检查失败: {str(e)}")
             return
             
-        if not self.collection:
-            messagebox.showerror("错误", "数据库未连接")
+        try:
+            self.log_message("🚀 开始导入数据...")
+            self.status_var.set("正在导入...")
+            
+            all_keywords = []
+            total_files = len(self.selected_files)
+            
+            for i, file_path in enumerate(self.selected_files):
+                filename = os.path.basename(file_path)
+                self.log_message(f"📁 处理文件: {filename}")
+                
+                # 更新进度
+                progress = (i / total_files) * 80  # 80% 用于读取文件
+                self.progress_var.set(progress)
+                self.root.update_idletasks()
+                
+                df = self.read_excel_file(file_path)
+                if df is None:
+                    self.log_message(f"❌ 文件 {filename} 读取失败，跳过")
+                    continue
+                    
+                # 查找关键词列
+                kw_column = self.find_keyword_column(df)
+                if kw_column is None:
+                    self.log_message(f"❌ 文件 {filename} 未找到关键词列，跳过")
+                    continue
+                    
+                # 提取关键词
+                keywords = df[kw_column].dropna().astype(str).tolist()
+                keywords = [kw.strip() for kw in keywords if kw.strip()]
+                
+                all_keywords.extend(keywords)
+                self.log_message(f"📊 {filename}: 提取 {len(keywords)} 个关键词")
+                
+            if not all_keywords:
+                self.log_message("❌ 没有提取到任何关键词")
+                messagebox.showwarning("警告", "没有从文件中提取到任何关键词")
+                return
+                
+        except Exception as e:
+            self.log_message(f"❌ 文件处理失败: {str(e)}")
+            messagebox.showerror("错误", f"文件处理失败: {str(e)}")
             return
             
-        # 确认导入
-        result = messagebox.askyesno("确认", "确定要导入数据到数据库吗？")
-        if not result:
-            return
+        try:
+            # 去重
+            unique_keywords = list(set(all_keywords))
+            self.log_message(f"🔄 去重处理: {len(all_keywords)} -> {len(unique_keywords)}")
             
-        self.log_message("🚀 开始导入数据...")
-        self.status_var.set("正在导入...")
-        
-        all_keywords = []
-        total_files = len(self.selected_files)
-        
-        for i, file_path in enumerate(self.selected_files):
-            filename = os.path.basename(file_path)
-            self.log_message(f"📁 处理文件: {filename}")
-            
-            # 更新进度
-            progress = (i / total_files) * 80  # 80% 用于读取文件
-            self.progress_var.set(progress)
-            self.root.update_idletasks()
-            
-            df = self.read_excel_file(file_path)
-            if df is None:
-                continue
+            # 检查数据库中已存在的关键词
+            self.log_message("🔍 检查数据库中已有的关键词...")
+            existing_keywords = set()
+            existing_docs = self.collection.find({}, {"keyword": 1})
+            for doc in existing_docs:
+                existing_keywords.add(doc["keyword"])
                 
-            # 查找关键词列
-            kw_column = self.find_keyword_column(df)
-            if kw_column is None:
-                continue
+            # 过滤出新关键词
+            new_keywords = [kw for kw in unique_keywords if kw not in existing_keywords]
+            
+            self.log_message(f"📋 数据库中已有 {len(existing_keywords)} 个关键词")
+            self.log_message(f"✨ 新增 {len(new_keywords)} 个关键词")
+            
+            if new_keywords:
+                # 准备插入数据
+                self.log_message("📝 准备插入数据...")
+                documents = []
+                for kw in new_keywords:
+                    documents.append({
+                        "keyword": kw,
+                        "first_created_time": datetime.now(),
+                        "last_used_time": None
+                    })
+                    
+                # 批量插入
+                self.progress_var.set(90)
+                self.root.update_idletasks()
                 
-            # 提取关键词
-            keywords = df[kw_column].dropna().astype(str).tolist()
-            keywords = [kw.strip() for kw in keywords if kw.strip()]
-            
-            all_keywords.extend(keywords)
-            self.log_message(f"📊 {filename}: 提取 {len(keywords)} 个关键词")
-            
-        # 去重
-        unique_keywords = list(set(all_keywords))
-        self.log_message(f"🔄 去重处理: {len(all_keywords)} -> {len(unique_keywords)}")
-        
-        # 检查数据库中已存在的关键词
-        existing_keywords = set()
-        existing_docs = self.collection.find({}, {"keyword": 1})
-        for doc in existing_docs:
-            existing_keywords.add(doc["keyword"])
-            
-        # 过滤出新关键词
-        new_keywords = [kw for kw in unique_keywords if kw not in existing_keywords]
-        
-        self.log_message(f"📋 数据库中已有 {len(existing_keywords)} 个关键词")
-        self.log_message(f"✨ 新增 {len(new_keywords)} 个关键词")
-        
-        if new_keywords:
-            # 准备插入数据
-            documents = []
-            for kw in new_keywords:
-                documents.append({
-                    "keyword": kw,
-                    "first_created_time": datetime.now(),
-                    "last_used_time": None
-                })
-                
-            # 批量插入
-            self.progress_var.set(90)
-            self.root.update_idletasks()
-            
-            try:
-                result = self.collection.insert_many(documents)
+                try:
+                    self.log_message(f"💾 开始批量插入 {len(documents)} 条数据...")
+                    result = self.collection.insert_many(documents)
+                    self.progress_var.set(100)
+                    self.log_message(f"✅ 成功导入 {len(result.inserted_ids)} 个关键词")
+                    self.status_var.set(f"导入完成: {len(result.inserted_ids)} 个关键词")
+                    
+                    messagebox.showinfo("成功", f"成功导入 {len(result.inserted_ids)} 个关键词到数据库")
+                    
+                except Exception as e:
+                    self.log_message(f"❌ 数据库插入失败: {str(e)}")
+                    self.status_var.set("导入失败")
+                    messagebox.showerror("错误", f"数据库插入失败: {str(e)}")
+                    return
+            else:
                 self.progress_var.set(100)
-                self.log_message(f"✅ 成功导入 {len(result.inserted_ids)} 个关键词")
-                self.status_var.set(f"导入完成: {len(result.inserted_ids)} 个关键词")
+                self.log_message("ℹ️ 没有新的关键词需要导入")
+                self.status_var.set("没有新关键词")
+                messagebox.showinfo("提示", "没有新的关键词需要导入")
                 
-                messagebox.showinfo("成功", f"成功导入 {len(result.inserted_ids)} 个关键词到数据库")
-                
-            except Exception as e:
-                self.log_message(f"❌ 导入失败: {str(e)}")
-                self.status_var.set("导入失败")
-                messagebox.showerror("错误", f"导入失败: {str(e)}")
-        else:
-            self.progress_var.set(100)
-            self.log_message("ℹ️ 没有新的关键词需要导入")
-            self.status_var.set("没有新关键词")
-            messagebox.showinfo("提示", "没有新的关键词需要导入")
+        except Exception as e:
+            self.log_message(f"❌ 数据库操作失败: {str(e)}")
+            messagebox.showerror("错误", f"数据库操作失败: {str(e)}")
             
     def view_database(self):
         """查看数据库内容"""
-        if not self.collection:
+        if self.collection is None:
+            self.log_message("❌ 数据库未连接")
             messagebox.showerror("错误", "数据库未连接")
             return
             
         try:
+            self.log_message("📊 开始查看数据库内容...")
+            
             total_count = self.collection.count_documents({})
             used_count = self.collection.count_documents({"last_used_time": {"$ne": None}})
             unused_count = total_count - used_count
@@ -401,6 +474,7 @@ class KeywordImporter:
             db_listbox.configure(yscrollcommand=db_scrollbar.set)
             
             # 获取最近的关键词
+            self.log_message("🔍 获取关键词数据...")
             recent_keywords = self.collection.find().sort("first_created_time", -1).limit(200)
             for doc in recent_keywords:
                 status = "✅" if doc.get("last_used_time") else "⭕"
@@ -417,12 +491,49 @@ class KeywordImporter:
             self.log_message(f"❌ 查看数据库失败: {str(e)}")
             messagebox.showerror("错误", f"查看数据库失败: {str(e)}")
             
+    def test_database_connection(self):
+        """测试数据库连接"""
+        self.log_message("🔧 测试数据库连接...")
+        
+        try:
+            if self.client is not None:
+                # 测试连接
+                self.client.admin.command('ping')
+                
+                # 测试读取操作
+                count = self.collection.count_documents({})
+                
+                self.log_message(f"✅ 数据库连接正常，当前有 {count} 条数据")
+                messagebox.showinfo("成功", f"数据库连接正常\n当前有 {count} 条数据")
+                
+            else:
+                self.log_message("❌ 数据库未连接")
+                messagebox.showerror("错误", "数据库未连接")
+                
+        except Exception as e:
+            self.log_message(f"❌ 数据库连接测试失败: {str(e)}")
+            messagebox.showerror("错误", f"数据库连接测试失败: {str(e)}")
+            
+    def reconnect_database(self):
+        """重新连接数据库"""
+        self.log_message("🔄 重新连接数据库...")
+        
+        # 关闭现有连接
+        if self.client is not None:
+            try:
+                self.client.close()
+            except:
+                pass
+                
+        # 重新连接
+        self.connect_database()
+        
     def run(self):
         """运行应用"""
         self.root.mainloop()
         
         # 关闭数据库连接
-        if self.client:
+        if self.client is not None:
             self.client.close()
 
 if __name__ == "__main__":
