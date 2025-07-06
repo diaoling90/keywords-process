@@ -90,7 +90,7 @@ app.post('/api/defaultkw', (req, res) => {
 // 获取数据库中的关键词
 app.get('/api/keywords', async (req, res) => {
     try {
-        const { before } = req.query;
+        const { before, type } = req.query;
         let query;
         
         // 基础查询条件：不显示被忽略的关键词
@@ -101,31 +101,54 @@ app.get('/api/keywords', async (req, res) => {
             ]
         };
         
-        if (before) {
-            // 如果有过滤时间，查询：使用时间为null的关键词（总是显示） OR 使用时间早于指定时间的关键词
-            const beforeDate = new Date(before);
-            query = {
-                $and: [
-                    baseQuery,
-                    {
-                        $or: [
-                            { last_used_time: { $exists: false } },
-                            { last_used_time: null },
-                            { last_used_time: { $lt: beforeDate } }
-                        ]
-                    }
+        // type过滤条件
+        let typeQuery = {};
+        if (type && type.trim()) {
+            // 如果指定了type，只获取：指定type的数据 OR type字段为null/空/不存在的数据
+            typeQuery = {
+                $or: [
+                    { type: type.trim() },
+                    { type: { $exists: false } },
+                    { type: null },
+                    { type: '' }
                 ]
             };
         } else {
-            // 如果没有过滤时间，显示所有未被忽略的关键词
-            query = baseQuery;
+            // 如果没有指定type，获取所有数据（保持原有行为）
+            typeQuery = {};
         }
+        
+        // 时间过滤条件
+        let timeQuery = {};
+        if (before) {
+            // 如果有过滤时间，查询：使用时间为null的关键词（总是显示） OR 使用时间早于指定时间的关键词
+            const beforeDate = new Date(before);
+            timeQuery = {
+                $or: [
+                    { last_used_time: { $exists: false } },
+                    { last_used_time: null },
+                    { last_used_time: { $lt: beforeDate } }
+                ]
+            };
+        }
+        
+        // 组合所有查询条件
+        const queryConditions = [baseQuery];
+        if (Object.keys(typeQuery).length > 0) {
+            queryConditions.push(typeQuery);
+        }
+        if (Object.keys(timeQuery).length > 0) {
+            queryConditions.push(timeQuery);
+        }
+        
+        query = queryConditions.length > 1 ? { $and: queryConditions } : queryConditions[0];
 
         const keywords = await db.collection(COLLECTION_NAME).find(query).toArray();
         
         // 添加调试信息
         console.log('调试信息:');
         console.log('- 过滤时间:', before || '未设置');
+        console.log('- 过滤类型:', type || '未设置');
         console.log('- 查询条件:', JSON.stringify(query));
         console.log('- 查询结果数量:', keywords.length);
         
@@ -214,18 +237,23 @@ app.put('/api/keywords/:id/use', async (req, res) => {
     }
 });
 
-// 更新多个关键词使用时间
+// 更新多个关键词使用时间和类型
 app.put('/api/keywords/use-batch', async (req, res) => {
     try {
-        const { keywords } = req.body;
+        const { keywords, type } = req.body;
         if (!Array.isArray(keywords)) {
             return res.status(400).json({ error: '关键词列表格式错误' });
+        }
+
+        const updateData = { last_used_time: new Date() };
+        if (type && type.trim()) {
+            updateData.type = type.trim();
         }
 
         const updatePromises = keywords.map(async (keyword) => {
             return db.collection(COLLECTION_NAME).updateOne(
                 { keyword },
-                { $set: { last_used_time: new Date() } }
+                { $set: updateData }
             );
         });
 
@@ -283,6 +311,24 @@ app.post('/api/start-import-tool', (req, res) => {
         res.json({ success: true, message: 'Python导入工具已启动' });
     } catch (error) {
         res.status(500).json({ error: '启动Python脚本失败: ' + error.message });
+    }
+});
+
+// 获取所有type字段的值
+app.get('/api/keywords/types', async (req, res) => {
+    try {
+        const types = await db.collection(COLLECTION_NAME).distinct('type', {
+            type: { $exists: true, $ne: null, $ne: '' }
+        });
+        
+        // 过滤掉空值并排序
+        const validTypes = types.filter(type => type && type.trim()).sort();
+        
+        console.log('获取type列表:', validTypes);
+        res.json(validTypes);
+    } catch (error) {
+        console.error('获取type列表失败:', error);
+        res.status(500).json({ error: '获取type列表失败' });
     }
 });
 
