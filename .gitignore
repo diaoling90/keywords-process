@@ -1,0 +1,99 @@
+# 依赖目录
+node_modules/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+pip-log.txt
+pip-delete-this-directory.txt
+
+# 运行时文件
+*.log
+*.pid
+*.seed
+*.pid.lock
+
+# 编辑器和IDE文件
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# 操作系统文件
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# 临时文件
+*.tmp
+*.temp
+*.bak
+*.backup
+*.old
+
+# 环境变量文件
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# 测试文件和覆盖率报告
+coverage/
+.nyc_output/
+.coverage
+htmlcov/
+.pytest_cache/
+.tox/
+
+# 构建输出
+dist/
+build/
+*.egg-info/
+
+# 数据库文件（如果有本地数据库文件）
+*.db
+*.sqlite
+*.sqlite3
+
+# 用户上传的文件
+uploads/
+temp/
+tmp/
+
+# 日志文件
+logs/
+*.log
+
+# 缓存文件
+.cache/
+.parcel-cache/
+
+# 锁文件（根据团队需要选择是否忽略）
+# package-lock.json
+# yarn.lock
+
+# Python 虚拟环境
+.python-version
+
+# 测试用的Excel文件
+test_*.xlsx
+test_*.xls
+sample_*.xlsx
+sample_*.xls
+
+# 备份文件
+*.bak
+
+# 项目特定文件
+# 如果不想提交默认关键词，可以取消注释下面这行
+# defaultkw.json 
