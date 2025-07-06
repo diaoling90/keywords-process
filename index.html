@@ -118,6 +118,17 @@
             box-shadow: 0 4px 8px rgba(0,0,0,0.15);
         }
 
+        .card-type-info {
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 4px 8px;
+            margin-bottom: 10px;
+            font-size: 12px;
+            color: #6c757d;
+            font-style: italic;
+        }
+
         .keyword-list {
             margin-bottom: 12px;
         }
@@ -283,6 +294,14 @@
             </div>
             
             <div class="input-group">
+                <label for="keywordType">关键词类型:</label>
+                <select id="keywordType">
+                    <option value="">请选择类型</option>
+                </select>
+                <input type="text" id="newType" placeholder="或输入新类型">
+            </div>
+            
+            <div class="input-group">
                 <button class="import-btn" onclick="openImportTool()">导入Excel文件</button>
             </div>
         </div>
@@ -306,6 +325,7 @@
         // 页面加载时初始化
         document.addEventListener('DOMContentLoaded', async () => {
             await loadDefaultKeyword();
+            await loadKeywordTypes();
             setCurrentTime();
             await loadKeywords();
         });
@@ -342,6 +362,30 @@
                 }
             } catch (error) {
                 console.error('加载默认关键词失败:', error);
+            }
+        }
+
+        // 加载关键词类型
+        async function loadKeywordTypes() {
+            try {
+                const response = await fetch('/api/keywords/types');
+                const types = await response.json();
+                
+                const selectElement = document.getElementById('keywordType');
+                // 清空现有选项（保留默认选项）
+                selectElement.innerHTML = '<option value="">请选择类型</option>';
+                
+                // 添加类型选项
+                types.forEach(type => {
+                    const option = document.createElement('option');
+                    option.value = type;
+                    option.textContent = type;
+                    selectElement.appendChild(option);
+                });
+                
+                console.log('加载到类型:', types);
+            } catch (error) {
+                console.error('加载关键词类型失败:', error);
             }
         }
 
@@ -389,6 +433,9 @@
         // 加载关键词并生成卡片
         async function loadKeywords() {
             const filterTime = document.getElementById('filterTime').value;
+            const selectedType = document.getElementById('keywordType').value.trim();
+            const newType = document.getElementById('newType').value.trim();
+            const currentType = newType || selectedType || '';
             const cardsContainer = document.getElementById('cardsContainer');
             
             // 显示加载状态
@@ -396,8 +443,18 @@
 
             try {
                 let url = '/api/keywords';
+                const params = new URLSearchParams();
+                
                 if (filterTime) {
-                    url += `?before=${encodeURIComponent(filterTime)}`;
+                    params.append('before', filterTime);
+                }
+                
+                if (currentType) {
+                    params.append('type', currentType);
+                }
+                
+                if (params.toString()) {
+                    url += '?' + params.toString();
                 }
 
                 const response = await fetch(url);
@@ -441,8 +498,15 @@
                 const allKeywords = [currentMainKeyword, ...group.map(item => processKeyword(item.keyword))];
                 const keywordIds = [null, ...group.map(item => item._id)]; // 主关键词没有ID
                 
+                // 获取这组关键词的type信息
+                const groupTypes = group.map(item => item.type || '');
+                const hasType = groupTypes.some(type => type && type.trim());
+                
                 html += `
                     <div class="keyword-card">
+                        ${hasType ? `<div class="card-type-info">
+                            类型: ${groupTypes.filter(type => type && type.trim()).join(', ') || '无'}
+                        </div>` : ''}
                         <div class="keyword-list">
                             ${allKeywords.map((keyword, idx) => {
                                 const safeKeyword = escapeHtml(keyword);
@@ -526,17 +590,36 @@
                 });
 
                 if (dbKeywordsToUpdate.length > 0) {
+                    // 获取当前选择的type
+                    const selectedType = document.getElementById('keywordType').value.trim();
+                    const newType = document.getElementById('newType').value.trim();
+                    const currentType = newType || selectedType || '';
+                    
+                    const requestBody = { keywords: dbKeywordsToUpdate };
+                    if (currentType) {
+                        requestBody.type = currentType;
+                    }
+                    
                     const response = await fetch('/api/keywords/use-batch', {
                         method: 'PUT',
                         headers: {
                             'Content-Type': 'application/json',
                         },
-                        body: JSON.stringify({ keywords: dbKeywordsToUpdate })
+                        body: JSON.stringify(requestBody)
                     });
 
                     const result = await response.json();
                     if (!result.success) {
                         throw new Error(result.error || '更新失败');
+                    }
+                    
+                    // 如果添加了新type，重新加载type列表
+                    if (newType) {
+                        await loadKeywordTypes();
+                        // 清空新输入框
+                        document.getElementById('newType').value = '';
+                        // 选择刚刚添加的type
+                        document.getElementById('keywordType').value = newType;
                     }
                 }
 
@@ -591,6 +674,18 @@
             }
         });
 
+        // 监听类型选择框变化
+        document.getElementById('keywordType').addEventListener('change', () => {
+            // 重新加载数据以应用类型过滤
+            loadKeywords();
+        });
+
+        // 监听新类型输入框变化
+        document.getElementById('newType').addEventListener('input', () => {
+            // 重新加载数据以应用类型过滤
+            loadKeywords();
+        });
+
         // 打开导入工具
         async function openImportTool() {
             try {
@@ -636,6 +731,8 @@
         // 清空过滤条件
         function clearFilter() {
             document.getElementById('filterTime').value = '';
+            document.getElementById('keywordType').value = '';
+            document.getElementById('newType').value = '';
             loadKeywords();
         }
 
@@ -682,8 +779,7 @@
                 
                 if (data.success) {
                     showMessage('关键词已忽略', 'success');
-                    // 重新加载数据以更新页面
-                    await loadKeywords();
+                    // 移除自动刷新，用户需要手动刷新页面
                 } else {
                     showMessage('忽略失败: ' + data.error, 'error');
                 }
