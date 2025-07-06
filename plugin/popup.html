@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Google Trends 关键词收集器</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            width: 320px;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .container {
+            padding: 20px;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        .header h1 {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 5px;
+        }
+
+        .header p {
+            font-size: 12px;
+            opacity: 0.8;
+        }
+
+        .status-card {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 16px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 12px;
+        }
+
+        .status-text {
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        .status-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background-color: #dc3545;
+            transition: all 0.3s ease;
+        }
+
+        .status-dot.active {
+            background-color: #28a745;
+            box-shadow: 0 0 10px rgba(40, 167, 69, 0.5);
+        }
+
+        .stats {
+            display: flex;
+            justify-content: space-between;
+            font-size: 12px;
+            opacity: 0.9;
+        }
+
+        .controls {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 16px;
+        }
+
+        .btn {
+            flex: 1;
+            padding: 10px 16px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+            backdrop-filter: blur(5px);
+        }
+
+        .btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: translateY(-1px);
+        }
+
+        .btn.primary {
+            background: #28a745;
+        }
+
+        .btn.primary:hover {
+            background: #218838;
+        }
+
+        .btn.secondary {
+            background: #007bff;
+        }
+
+        .btn.secondary:hover {
+            background: #0056b3;
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .info-section {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            padding: 12px;
+            margin-top: 16px;
+            font-size: 12px;
+            line-height: 1.4;
+        }
+
+        .info-section h3 {
+            font-size: 13px;
+            margin-bottom: 8px;
+            color: #ffd700;
+        }
+
+        .api-status {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-top: 12px;
+            font-size: 12px;
+        }
+
+        .api-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background-color: #ffc107;
+        }
+
+        .api-dot.success {
+            background-color: #28a745;
+        }
+
+        .api-dot.error {
+            background-color: #dc3545;
+        }
+
+        .loading {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top-color: white;
+            animation: spin 1s ease-in-out infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .notification {
+            padding: 8px 12px;
+            border-radius: 6px;
+            margin-top: 12px;
+            font-size: 12px;
+            display: none;
+        }
+
+        .notification.success {
+            background: rgba(40, 167, 69, 0.2);
+            border: 1px solid rgba(40, 167, 69, 0.3);
+        }
+
+        .notification.error {
+            background: rgba(220, 53, 69, 0.2);
+            border: 1px solid rgba(220, 53, 69, 0.3);
+        }
+
+        .notification.info {
+            background: rgba(0, 123, 255, 0.2);
+            border: 1px solid rgba(0, 123, 255, 0.3);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔍 关键词收集器</h1>
+            <p>Google Trends 高趋势关键词自动收集</p>
+        </div>
+
+        <div class="status-card">
+            <div class="status-indicator">
+                <span class="status-text" id="statusText">收集器已停止</span>
+                <div class="status-dot" id="statusDot"></div>
+            </div>
+            <div class="stats">
+                <span>已收集: <span id="collectedCount">0</span> 个</span>
+                <span>阈值: >300%</span>
+            </div>
+        </div>
+
+        <div class="controls">
+            <button class="btn primary" id="toggleBtn">启动收集</button>
+            <button class="btn secondary" id="collectNowBtn">立即收集</button>
+        </div>
+
+        <div class="api-status">
+            <div class="api-dot" id="apiDot"></div>
+            <span id="apiStatus">检查API连接...</span>
+        </div>
+
+        <div class="info-section">
+            <h3>💡 使用说明</h3>
+            <p>
+                1. 确保本地服务器运行在 localhost:3000<br>
+                2. 访问 Google Trends 探索页面<br>
+                3. 启动收集器，自动抓取>300%趋势的关键词<br>
+                4. 关键词将自动保存到数据库
+            </p>
+        </div>
+
+        <div class="notification" id="notification"></div>
+    </div>
+
+    <script src="popup.js"></script>
+</body>
+</html> 

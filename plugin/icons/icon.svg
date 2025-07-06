@@ -1,0 +1,22 @@
+<svg width="128" height="128" viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg">
+  <!-- 背景圆形 -->
+  <circle cx="64" cy="64" r="58" fill="#4285f4" stroke="#1a73e8" stroke-width="4"/>
+  
+  <!-- 放大镜镜面 -->
+  <circle cx="50" cy="50" r="20" fill="none" stroke="white" stroke-width="4"/>
+  
+  <!-- 放大镜手柄 -->
+  <line x1="66" y1="66" x2="85" y2="85" stroke="white" stroke-width="4" stroke-linecap="round"/>
+  
+  <!-- 趋势箭头 -->
+  <path d="M 30 75 L 45 60 L 60 70 L 75 50" fill="none" stroke="#ffd700" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  
+  <!-- 趋势点 -->
+  <circle cx="30" cy="75" r="2" fill="#ffd700"/>
+  <circle cx="45" cy="60" r="2" fill="#ffd700"/>
+  <circle cx="60" cy="70" r="2" fill="#ffd700"/>
+  <circle cx="75" cy="50" r="2" fill="#ffd700"/>
+  
+  <!-- 百分比符号 -->
+  <text x="85" y="45" font-family="Arial, sans-serif" font-size="12" font-weight="bold" fill="white">%</text>
+</svg> 
