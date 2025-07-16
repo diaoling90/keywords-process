@@ -179,6 +179,17 @@
             transform: scale(0.9);
         }
 
+        .ignore-btn:disabled {
+            background-color: #6c757d;
+            cursor: not-allowed;
+            opacity: 0.5;
+        }
+
+        .ignore-btn:disabled:hover {
+            background-color: #6c757d;
+            transform: none;
+        }
+
         .keyword-item:hover {
             background-color: #e9ecef;
             transform: translateY(-1px);
@@ -195,6 +206,14 @@
             border-color: #c3e6cb;
             color: #155724;
             animation: copySuccess 0.5s ease;
+        }
+
+        .keyword-item.ignored {
+            background-color: #f8d7da;
+            border-color: #f5c6cb;
+            color: #721c24;
+            opacity: 0.7;
+            text-decoration: line-through;
         }
 
         @keyframes copySuccess {
@@ -778,8 +797,16 @@
                 const data = await result.json();
                 
                 if (data.success) {
-                    showMessage('关键词已忽略', 'success');
-                    // 移除自动刷新，用户需要手动刷新页面
+                    // 找到触发事件的按钮的父元素（关键词元素）并添加忽略样式
+                    const clickedButton = event.target;
+                    const keywordElement = clickedButton.closest('.keyword-item');
+                    if (keywordElement) {
+                        keywordElement.classList.add('ignored');
+                        // 禁用忽略按钮
+                        clickedButton.disabled = true;
+                        clickedButton.style.opacity = '0.5';
+                        clickedButton.style.cursor = 'not-allowed';
+                    }
                 } else {
                     showMessage('忽略失败: ' + data.error, 'error');
                 }
