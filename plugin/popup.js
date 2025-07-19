@@ -3,8 +3,9 @@
 class PopupController {
     constructor() {
         this.apiUrl = 'http://localhost:3000';
-        this.isRunning = false;
-        this.collectedCount = 0;
+        this.isMonitoring = true;
+        this.pendingCount = 0;
+        this.interceptedCount = 0;
         
         this.init();
     }
@@ -17,87 +18,102 @@ class PopupController {
     }
     
     bindEvents() {
-        // 切换收集器状态
-        document.getElementById('toggleBtn').addEventListener('click', () => {
-            this.toggleCollector();
+        // 采集到数据库
+        document.getElementById('collectBtn').addEventListener('click', () => {
+            this.collectPending();
         });
         
-        // 立即收集
-        document.getElementById('collectNowBtn').addEventListener('click', () => {
-            this.collectNow();
+        // 清空待采集
+        document.getElementById('clearBtn').addEventListener('click', () => {
+            this.clearPending();
         });
     }
     
-    async toggleCollector() {
+    async collectPending() {
         try {
+            const collectBtn = document.getElementById('collectBtn');
+            const originalText = collectBtn.textContent;
+            
+            // 更新按钮状态
+            collectBtn.disabled = true;
+            collectBtn.textContent = '采集中...';
+            
             const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
             const activeTab = tabs[0];
             
             // 检查是否在Google Trends页面
             if (!activeTab.url.includes('trends.google.com/trends/explore')) {
                 this.showNotification('请先访问 Google Trends 探索页面', 'error');
+                collectBtn.disabled = false;
+                collectBtn.textContent = originalText;
                 return;
             }
             
-            // 发送消息到content script
             const response = await chrome.tabs.sendMessage(activeTab.id, {
-                action: 'toggleCollector'
+                action: 'collectPending'
             });
             
             if (response) {
-                this.isRunning = response.status;
-                this.updateUI();
-                
-                const message = this.isRunning ? '收集器已启动' : '收集器已停止';
-                this.showNotification(message, 'success');
-            }
-        } catch (error) {
-            console.error('切换收集器状态失败:', error);
-            
-            if (error.message.includes('Could not establish connection')) {
-                this.showNotification('请刷新 Google Trends 页面后重试', 'error');
-            } else {
-                this.showNotification('操作失败，请重试', 'error');
-            }
-        }
-    }
-    
-    async collectNow() {
-        try {
-            const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
-            const activeTab = tabs[0];
-            
-            if (!activeTab.url.includes('trends.google.com/trends/explore')) {
-                this.showNotification('请先访问 Google Trends 探索页面', 'error');
-                return;
-            }
-            
-            // 暂时禁用按钮
-            const collectBtn = document.getElementById('collectNowBtn');
-            const originalText = collectBtn.textContent;
-            collectBtn.disabled = true;
-            collectBtn.innerHTML = '<div class="loading"></div> 收集中...';
-            
-            const response = await chrome.tabs.sendMessage(activeTab.id, {
-                action: 'collectNow'
-            });
-            
-            if (response) {
-                this.showNotification('开始收集关键词...', 'info');
-                // 1秒后恢复按钮
+                this.showNotification('开始采集关键词到数据库...', 'info');
+                // 2秒后恢复按钮并刷新状态
                 setTimeout(() => {
                     collectBtn.disabled = false;
                     collectBtn.textContent = originalText;
+                    this.getCollectorStatus(); // 刷新状态
+                }, 2000);
+            }
+        } catch (error) {
+            console.error('采集关键词失败:', error);
+            this.showNotification('采集失败，请重试', 'error');
+            
+            // 恢复按钮
+            const collectBtn = document.getElementById('collectBtn');
+            collectBtn.disabled = false;
+            collectBtn.textContent = '采集到数据库';
+        }
+    }
+    
+    async clearPending() {
+        try {
+            const clearBtn = document.getElementById('clearBtn');
+            const originalText = clearBtn.textContent;
+            
+            // 更新按钮状态
+            clearBtn.disabled = true;
+            clearBtn.textContent = '清空中...';
+            
+            const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+            const activeTab = tabs[0];
+            
+            // 检查是否在Google Trends页面
+            if (!activeTab.url.includes('trends.google.com/trends/explore')) {
+                this.showNotification('请先访问 Google Trends 探索页面', 'error');
+                clearBtn.disabled = false;
+                clearBtn.textContent = originalText;
+                return;
+            }
+            
+            const response = await chrome.tabs.sendMessage(activeTab.id, {
+                action: 'clearPending'
+            });
+            
+            if (response) {
+                this.showNotification('已清空待采集列表', 'success');
+                // 1秒后恢复按钮并刷新状态
+                setTimeout(() => {
+                    clearBtn.disabled = false;
+                    clearBtn.textContent = originalText;
+                    this.getCollectorStatus(); // 刷新状态
                 }, 1000);
             }
         } catch (error) {
-            console.error('立即收集失败:', error);
-            this.showNotification('收集失败，请重试', 'error');
+            console.error('清空待采集列表失败:', error);
+            this.showNotification('清空失败，请重试', 'error');
             
             // 恢复按钮
-            const collectBtn = document.getElementById('collectNowBtn');
-            collectBtn.disabled = false;
-            collectBtn.textContent = '立即收集';
+            const clearBtn = document.getElementById('clearBtn');
+            clearBtn.disabled = false;
+            clearBtn.textContent = '清空待采集';
         }
     }
     
@@ -112,8 +128,9 @@ class PopupController {
                 });
                 
                 if (response) {
-                    this.isRunning = response.status;
-                    this.collectedCount = response.collected || 0;
+                    this.isMonitoring = response.isMonitoring;
+                    this.pendingCount = response.pendingCount || 0;
+                    this.interceptedCount = response.interceptedCount || 0;
                     this.updateUI();
                 }
             }
@@ -149,22 +166,29 @@ class PopupController {
     updateUI() {
         const statusText = document.getElementById('statusText');
         const statusDot = document.getElementById('statusDot');
-        const toggleBtn = document.getElementById('toggleBtn');
-        const collectedCountEl = document.getElementById('collectedCount');
+        const pendingCountEl = document.getElementById('pendingCount');
+        const interceptedCountEl = document.getElementById('interceptedCount');
         
-        if (this.isRunning) {
-            statusText.textContent = '收集器运行中';
+        if (this.isMonitoring) {
+            statusText.textContent = 'API监听中';
             statusDot.className = 'status-dot active';
-            toggleBtn.textContent = '停止收集';
-            toggleBtn.className = 'btn primary';
         } else {
-            statusText.textContent = '收集器已停止';
+            statusText.textContent = '监听已停止';
             statusDot.className = 'status-dot';
-            toggleBtn.textContent = '启动收集';
-            toggleBtn.className = 'btn primary';
         }
         
-        collectedCountEl.textContent = this.collectedCount;
+        pendingCountEl.textContent = this.pendingCount;
+        interceptedCountEl.textContent = this.interceptedCount;
+        
+        // 根据待采集数量启用/禁用采集按钮
+        const collectBtn = document.getElementById('collectBtn');
+        if (this.pendingCount > 0) {
+            collectBtn.classList.remove('disabled');
+            collectBtn.disabled = false;
+        } else {
+            collectBtn.classList.add('disabled');
+            collectBtn.disabled = false; // 仍然可以点击，但会显示"没有待采集"消息
+        }
     }
     
     showNotification(message, type = 'info') {

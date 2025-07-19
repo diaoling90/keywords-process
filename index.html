@@ -216,6 +216,19 @@
             text-decoration: line-through;
         }
 
+        .keyword-item.api-keyword {
+            background-color: #28a745;
+            color: white;
+            font-weight: bold;
+            border: 2px solid #1e7e34;
+        }
+
+        .keyword-item.api-keyword:hover {
+            background-color: #1e7e34;
+            transform: translateY(-1px);
+            box-shadow: 0 2px 8px rgba(40, 167, 69, 0.3);
+        }
+
         @keyframes copySuccess {
             0% { transform: scale(1); }
             50% { transform: scale(1.05); }
@@ -303,6 +316,7 @@
                 </select>
                 <input type="text" id="newKeyword" placeholder="或输入新关键词">
                 <button onclick="saveMainKeyword()">保存</button>
+                <button onclick="copyMainKeyword()" title="复制主关键词">复制</button>
             </div>
             
             <div class="input-group">
@@ -493,11 +507,6 @@
         // 生成卡片
         function generateCards() {
             const cardsContainer = document.getElementById('cardsContainer');
-            const selectedKeyword = document.getElementById('mainKeyword').value.trim();
-            const newKeyword = document.getElementById('newKeyword').value.trim();
-            
-            // 获取当前主关键词
-            const currentMainKeyword = newKeyword || selectedKeyword || mainKeyword;
             
             if (dbKeywords.length === 0) {
                 cardsContainer.innerHTML = '<div class="loading">暂无关键词数据</div>';
@@ -505,23 +514,23 @@
                 return;
             }
 
-            // 每4个数据库关键词组成一组
+            // 每5个数据库关键词组成一组
             const cards = [];
-            for (let i = 0; i < dbKeywords.length; i += 4) {
-                const group = dbKeywords.slice(i, i + 4);
+            for (let i = 0; i < dbKeywords.length; i += 5) {
+                const group = dbKeywords.slice(i, i + 5);
                 cards.push(group);
             }
 
             let html = '';
             cards.forEach((group, index) => {
-                const allKeywords = [currentMainKeyword, ...group.map(item => processKeyword(item.keyword))];
-                const keywordIds = [null, ...group.map(item => item._id)]; // 主关键词没有ID
+                const allKeywords = group.map(item => processKeyword(item.keyword));
+                const keywordIds = group.map(item => item._id);
                 
                 // 获取这组关键词的type信息
                 const groupTypes = group.map(item => item.type || '');
                 const hasType = groupTypes.some(type => type && type.trim());
                 
-                html += `
+                                html += `
                     <div class="keyword-card">
                         ${hasType ? `<div class="card-type-info">
                             类型: ${groupTypes.filter(type => type && type.trim()).join(', ') || '无'}
@@ -530,16 +539,24 @@
                             ${allKeywords.map((keyword, idx) => {
                                 const safeKeyword = escapeHtml(keyword);
                                 const keywordId = keywordIds[idx];
-                                const isMainKeyword = idx === 0;
+                                const keywordData = group[idx];
+                                const source = keywordData?.source || '';
+                                const trendPercentage = keywordData?.trend_percentage || '';
                                 
-                                return `<span class="keyword-item ${isMainKeyword ? 'main-keyword' : ''}" 
+                                // 构建显示信息
+                                let infoText = '';
+                                if (source === 'google_trends_api' && trendPercentage) {
+                                    infoText = ` (API: ${trendPercentage}%)`;
+                                }
+                                
+                                return `<span class="keyword-item ${source === 'google_trends_api' ? 'api-keyword' : ''}" 
                                               data-keyword="${safeKeyword}"
                                               onclick="copyKeywordFromElement(this)" 
-                                              title="单击复制">
-                                            <span class="keyword-text">${safeKeyword}</span>
-                                            ${!isMainKeyword && keywordId ? `<button class="ignore-btn" 
-                                                                                    title="忽略此关键词"
-                                                                                    onclick="ignoreKeyword(event, '${keywordId}')">×</button>` : ''}
+                                              title="单击复制${infoText ? ' | ' + infoText : ''}">
+                                            <span class="keyword-text">${safeKeyword}${infoText}</span>
+                                            ${keywordId ? `<button class="ignore-btn" 
+                                                                    title="忽略此关键词"
+                                                                    onclick="ignoreKeyword(event, '${keywordId}')">×</button>` : ''}
                                         </span>`;
                             }).join('')}
                         </div>
@@ -554,7 +571,7 @@
             });
 
             cardsContainer.innerHTML = html;
-            updateStats(cards.length, dbKeywords.length + cards.length); // 卡片数，总关键词数（包括主关键词）
+            updateStats(cards.length, dbKeywords.length); // 卡片数，总关键词数
         }
 
         // 处理关键词（URL转换）
@@ -603,7 +620,7 @@
                 // 更新数据库中关键词的使用时间
                 const dbKeywordsToUpdate = [];
                 keywordIds.forEach((id, index) => {
-                    if (id && index > 0) { // 跳过主关键词（index 0）
+                    if (id) { // 所有关键词都需要更新
                         dbKeywordsToUpdate.push(dbKeywords.find(item => item._id === id)?.keyword);
                     }
                 });
@@ -677,21 +694,7 @@
             document.getElementById('totalKeywords').textContent = keywordCount;
         }
 
-        // 监听主关键词变化
-        document.getElementById('mainKeyword').addEventListener('change', () => {
-            // 如果有卡片，重新生成以更新主关键词显示
-            if (dbKeywords.length > 0) {
-                generateCards();
-            }
-        });
 
-        // 监听新输入框变化
-        document.getElementById('newKeyword').addEventListener('input', () => {
-            // 如果有卡片，重新生成以更新主关键词显示
-            if (dbKeywords.length > 0) {
-                generateCards();
-            }
-        });
 
         // 监听类型选择框变化
         document.getElementById('keywordType').addEventListener('change', () => {
@@ -812,6 +815,49 @@
                 }
             } catch (error) {
                 showMessage('忽略失败: ' + error.message, 'error');
+            }
+        }
+
+        // 复制主关键词
+        async function copyMainKeyword() {
+            const selectedKeyword = document.getElementById('mainKeyword').value.trim();
+            const newKeyword = document.getElementById('newKeyword').value.trim();
+            
+            // 优先使用新输入的关键词，如果没有则使用选择的关键词
+            const keyword = newKeyword || selectedKeyword;
+            
+            if (!keyword) {
+                showMessage('没有可复制的主关键词', 'error');
+                return;
+            }
+
+            try {
+                console.log('开始复制主关键词:', keyword);
+                
+                // 使用现代的 Clipboard API
+                if (navigator.clipboard && window.isSecureContext) {
+                    await navigator.clipboard.writeText(keyword);
+                    console.log('使用 Clipboard API 复制成功');
+                } else {
+                    // 备用方案：使用传统的 execCommand
+                    const textArea = document.createElement('textarea');
+                    textArea.value = keyword;
+                    textArea.style.position = 'fixed';
+                    textArea.style.left = '-999999px';
+                    textArea.style.top = '-999999px';
+                    document.body.appendChild(textArea);
+                    textArea.focus();
+                    textArea.select();
+                    const success = document.execCommand('copy');
+                    textArea.remove();
+                    console.log('使用 execCommand 复制:', success ? '成功' : '失败');
+                }
+                
+                showMessage(`已复制主关键词: ${keyword}`, 'success');
+                
+            } catch (error) {
+                console.error('复制主关键词失败:', error);
+                showMessage('复制失败: ' + error.message, 'error');
             }
         }
 

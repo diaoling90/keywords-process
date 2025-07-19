@@ -194,24 +194,50 @@ app.get('/api/keywords/all', async (req, res) => {
 // 添加关键词到数据库
 app.post('/api/keywords', async (req, res) => {
     try {
-        const { keyword } = req.body;
+        const { keyword, source, trend_percentage } = req.body;
         if (!keyword) {
             return res.status(400).json({ error: '关键词不能为空' });
         }
 
         const existingKeyword = await db.collection(COLLECTION_NAME).findOne({ keyword });
         if (existingKeyword) {
+            // 如果关键词已存在，但有新的趋势信息，则更新趋势信息
+            if (source && trend_percentage) {
+                await db.collection(COLLECTION_NAME).updateOne(
+                    { keyword },
+                    { 
+                        $set: { 
+                            source: source,
+                            trend_percentage: trend_percentage,
+                            last_updated: new Date()
+                        }
+                    }
+                );
+                return res.json({ success: true, message: '关键词趋势信息已更新' });
+            }
             return res.json({ success: true, message: '关键词已存在' });
         }
 
-        const result = await db.collection(COLLECTION_NAME).insertOne({
+        const keywordDoc = {
             keyword,
             first_created_time: new Date(),
             last_used_time: null
-        });
+        };
+
+        // 如果有来源和趋势信息，则添加
+        if (source) {
+            keywordDoc.source = source;
+        }
+        if (trend_percentage) {
+            keywordDoc.trend_percentage = trend_percentage;
+            keywordDoc.last_updated = new Date();
+        }
+
+        const result = await db.collection(COLLECTION_NAME).insertOne(keywordDoc);
 
         res.json({ success: true, id: result.insertedId });
     } catch (error) {
+        console.error('添加关键词失败:', error);
         res.status(500).json({ error: '添加关键词失败' });
     }
 });

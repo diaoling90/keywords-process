@@ -126,6 +126,11 @@
             transform: none;
         }
 
+        .btn.disabled {
+            opacity: 0.6;
+            background: rgba(255, 255, 255, 0.1);
+        }
+
         .info-section {
             background: rgba(255, 255, 255, 0.1);
             border-radius: 8px;
@@ -211,18 +216,18 @@
 
         <div class="status-card">
             <div class="status-indicator">
-                <span class="status-text" id="statusText">收集器已停止</span>
-                <div class="status-dot" id="statusDot"></div>
+                <span class="status-text" id="statusText">API监听中</span>
+                <div class="status-dot active" id="statusDot"></div>
             </div>
             <div class="stats">
-                <span>已收集: <span id="collectedCount">0</span> 个</span>
-                <span>阈值: >300%</span>
+                <span>待采集: <span id="pendingCount">0</span> 个</span>
+                <span>已拦截: <span id="interceptedCount">0</span> 个</span>
             </div>
         </div>
 
         <div class="controls">
-            <button class="btn primary" id="toggleBtn">启动收集</button>
-            <button class="btn secondary" id="collectNowBtn">立即收集</button>
+            <button class="btn primary" id="collectBtn">采集到数据库</button>
+            <button class="btn secondary" id="clearBtn">清空待采集</button>
         </div>
 
         <div class="api-status">
@@ -234,11 +239,11 @@
             <h3>💡 使用说明</h3>
             <p>
                 1. 确保本地服务器运行在 localhost:3000<br>
-                2. 访问 Google Trends 探索页面<br>
-                3. <strong>点击"立即收集"按钮</strong>收集关键词<br>
-                4. 收集>300%趋势和飙升关键词<br>
-                5. 关键词将保存到数据库<br>
-                <span style="color: #ffd700; font-size: 11px;">⚠️ 已禁用自动收集，仅手动点击收集</span>
+                2. 访问 Google Trends 探索页面并搜索关键词<br>
+                3. <strong>系统自动监听API接口</strong>获取数据<br>
+                4. 发现>300%趋势关键词时显示在"待采集"<br>
+                5. <strong>点击"采集到数据库"</strong>保存关键词<br>
+                <span style="color: #ffd700; font-size: 11px;">✨ 自动监听，手动采集，更精准控制</span>
             </p>
         </div>
 

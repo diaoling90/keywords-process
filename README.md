@@ -237,3 +237,137 @@ MongoDB 集合 `keywords` 中的文档结构：
 - `ModuleNotFoundError: No module named 'pymongo'` → 运行 `pip install pymongo`
 - `ModuleNotFoundError: No module named 'openpyxl'` → 运行 `pip install openpyxl`
 - 文件读取失败 → 检查文件是否被其他程序占用 
+
+
+
+
+// 添加全局调试工具
+        window.trendsDebug = {
+            // 一键诊断问题
+            diagnose: () => {
+                console.log('🏥 开始诊断插件问题...');
+                console.log('='.repeat(50));
+                
+                // 1. 检查页面
+                console.log('1️⃣ 检查页面状态:');
+                console.log('   URL:', window.location.href);
+                console.log('   是否在Google Trends:', window.location.href.includes('trends.google.com/trends/explore'));
+                console.log('   页面标题:', document.title);
+                
+                // 2. 检查插件状态
+                console.log('\n2️⃣ 检查插件状态:');
+                console.log('   插件已加载:', typeof window.collector !== 'undefined');
+                console.log('   监听状态:', window.collector?.isMonitoring);
+                console.log('   待采集数量:', window.collector?.pendingKeywords?.size || 0);
+                console.log('   已拦截数量:', window.collector?.interceptedKeywords?.size || 0);
+                
+                // 3. 检查网络请求
+                console.log('\n3️⃣ 检查网络请求:');
+                const totalRequests = window.interceptedRequests?.length || 0;
+                const trendsRequests = window.interceptedRequests?.filter(req => 
+                    req.url.includes('relatedsearches')
+                ).length || 0;
+                console.log('   总请求数:', totalRequests);
+                console.log('   相关查询请求数:', trendsRequests);
+                
+                if (trendsRequests > 0) {
+                    console.log('   相关查询请求:');
+                    window.interceptedRequests
+                        .filter(req => req.url.includes('relatedsearches'))
+                        .forEach(req => {
+                            console.log(`     ${req.method} ${req.url}`);
+                        });
+                }
+                
+                // 4. 检查页面数据
+                console.log('\n4️⃣ 检查页面数据:');
+                let foundHighValue = 0;
+                document.querySelectorAll('*').forEach(el => {
+                    const text = el.textContent;
+                    if (text && text.includes('%')) {
+                        const matches = text.match(/(\d+(?:,\d+)?(?:\.\d+)?)%/g);
+                        if (matches) {
+                            matches.forEach(match => {
+                                const value = parseFloat(match.replace(',', ''));
+                                if (value >= 300) foundHighValue++;
+                            });
+                        }
+                    }
+                });
+                console.log('   页面中>=300%的元素:', foundHighValue);
+                
+                // 5. 建议
+                console.log('\n5️⃣ 诊断建议:');
+                if (!window.location.href.includes('trends.google.com/trends/explore')) {
+                    console.log('   ❌ 请访问 Google Trends 探索页面');
+                }
+                if (totalRequests === 0) {
+                    console.log('   ❌ 没有拦截到任何请求，请刷新页面');
+                }
+                if (trendsRequests === 0 && totalRequests > 0) {
+                    console.log('   ⚠️ 有请求但没有相关查询请求，请在页面中搜索关键词');
+                }
+                if (foundHighValue === 0) {
+                    console.log('   ⚠️ 页面没有高价值关键词，尝试搜索热门话题');
+                }
+                if (foundHighValue > 0 && (window.collector?.pendingKeywords?.size || 0) === 0) {
+                    console.log('   🔧 页面有数据但未采集到，可能需要向下滚动查看"相关查询"');
+                }
+                
+                console.log('='.repeat(50));
+            },
+            
+            // 显示所有拦截的URL
+            showRequests: () => {
+                console.log('📋 已拦截的请求列表:');
+                if (window.interceptedRequests && window.interceptedRequests.length > 0) {
+                    window.interceptedRequests.forEach((req, index) => {
+                        console.log(`${index + 1}. ${req.method} ${req.url}`);
+                    });
+                    
+                    // 过滤相关查询请求
+                    const trendsRequests = window.interceptedRequests.filter(req => 
+                        req.url.includes('relatedsearches')
+                    );
+                    console.log(`其中 ${trendsRequests.length} 个是相关查询请求`);
+                } else {
+                    console.log('暂无拦截的请求');
+                }
+            },
+            
+            // 手动测试
+            test: () => {
+                console.log('🧪 手动测试采集功能...');
+                if (window.collector) {
+                    console.log('待采集数量:', window.collector.pendingKeywords.size);
+                    console.log('已拦截数量:', window.collector.interceptedKeywords.size);
+                } else {
+                    console.log('❌ 收集器未加载');
+                }
+            }
+        };
+        
+        // 添加即时检查功能到 trendsDebug
+        window.trendsDebug.check = () => {
+            console.log('🔍 即时状态检查:');
+            console.log('   当前时间:', new Date().toLocaleTimeString());
+            console.log('   window.collector 存在:', !!window.collector);
+            console.log('   window.collector 类型:', typeof window.collector);
+            console.log('   window.trendsDebug 存在:', !!window.trendsDebug);
+            console.log('   window.interceptedRequests 长度:', window.interceptedRequests?.length || 0);
+            
+            if (window.collector) {
+                console.log('   ✅ 插件已正确加载');
+                console.log('   插件监听状态:', window.collector.isMonitoring);
+                console.log('   待采集数量:', window.collector.pendingKeywords?.size || 0);
+                console.log('   已拦截数量:', window.collector.interceptedKeywords?.size || 0);
+            } else {
+                console.log('   ❌ 插件未加载');
+            }
+            
+            return {
+                collectorExists: !!window.collector,
+                trendsDebugExists: !!window.trendsDebug,
+                requestCount: window.interceptedRequests?.length || 0
+            };
+        };
