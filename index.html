@@ -678,7 +678,7 @@
 
                 // 构建 Google Trends URL
                 const queryString = keywords.join(',');
-                const trendsUrl = `https://trends.google.com/trends/explore?q=${encodeURIComponent(queryString)}&hl=zh-CN`;
+                const trendsUrl = `https://trends.google.com/trends/explore?date=today%203-m&q=${encodeURIComponent(queryString)}&hl=zh-CN`;
                 
                 // 打开新窗口
                 window.open(trendsUrl, '_blank');
