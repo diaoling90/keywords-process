@@ -3,7 +3,7 @@
     console.log('🎯 Google Trends 数据处理器已加载');
 
     // 目标API接口
-    const TARGET_API = 'trends.google.com/trends/api/widgetdata/relatedsearches';
+    const TARGET_API = '/trends/api/widgetdata/relatedsearches';
 
     // 全局数据存储
     window.trendsData = {
@@ -16,7 +16,6 @@
     window.fetch = async (...args) => {
         const response = await originalFetch(...args);
         const url = args[0];
-        console.log('🔥 拦截API:', url);
         // 检查是否是目标API
         if (url && typeof url === 'string' && url.includes(TARGET_API)) {
             console.log('🔥 拦截到目标API:', url);
@@ -34,7 +33,6 @@
     // Hook XMLHttpRequest
     const originalXHROpen = XMLHttpRequest.prototype.open;
     XMLHttpRequest.prototype.open = function (method, url, ...rest) {
-        console.log('🔥 拦截API:', url);
         if (url && url.includes(TARGET_API)) {
             console.log('🔥 XHR拦截到目标API:', url);
             
@@ -89,51 +87,48 @@
     }
 
     // 从API数据中提取关键词
-    function extractKeywordsFromAPI(data) {
-        const keywords = [];
-        
-        try {
-            function searchKeywords(obj, path = '') {
-                if (!obj || typeof obj !== 'object') return;
-                
-                if (Array.isArray(obj)) {
-                    obj.forEach((item, index) => {
-                        if (item && typeof item === 'object') {
-                            const keyword = item.query || item.term || item.keyword || item.name;
-                            const value = item.value || item.percent || item.score;
+function extractKeywordsFromAPI(data) {
+    const keywords = [];
+    
+    try {
+        function searchKeywords(obj) {
+            if (!obj || typeof obj !== 'object') return;
+            
+            if (Array.isArray(obj)) {
+                obj.forEach(item => {
+                    if (item && typeof item === 'object') {
+                        // 只查找 query 和 value 字段
+                        if (item.query && item.value !== undefined) {
+                            const numValue = parseFloat(item.value);
                             
-                            if (keyword && value !== undefined) {
-                                const numValue = parseFloat(value);
-                                
-                                if (numValue >= 300) {
-                                    keywords.push({
-                                        keyword: keyword,
-                                        value: numValue,
-                                        source: 'Google Trends API',
-                                        path: `${path}[${index}]`
-                                    });
-                                }
+                            if (numValue >= 300) {
+                                keywords.push({
+                                    keyword: item.query,
+                                    value: numValue
+                                });
                             }
-                            
-                            searchKeywords(item, `${path}[${index}]`);
                         }
-                    });
-                } else {
-                    for (let key in obj) {
-                        const currentPath = path ? `${path}.${key}` : key;
-                        searchKeywords(obj[key], currentPath);
+                        
+                        // 继续递归搜索
+                        searchKeywords(item);
                     }
+                });
+            } else {
+                // 搜索对象的所有属性
+                for (let key in obj) {
+                    searchKeywords(obj[key]);
                 }
             }
-            
-            searchKeywords(data);
-            
-        } catch (error) {
-            console.error('提取关键词时出错:', error);
         }
         
-        return keywords;
+        searchKeywords(data);
+        
+    } catch (error) {
+        console.error('提取关键词时出错:', error);
     }
+    
+    return keywords;
+}
 
     // 显示通知
     function showNotification(message) {
