@@ -300,6 +300,68 @@
             color: #666;
         }
 
+        /* 分页样式 */
+        .pagination-container {
+            margin-top: 20px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            border: 1px solid #e0e0e0;
+        }
+
+        .pagination-info {
+            text-align: center;
+            margin-bottom: 10px;
+            color: #666;
+            font-size: 14px;
+        }
+
+        .pagination-controls {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .pagination-controls button {
+            padding: 6px 12px;
+            font-size: 13px;
+            min-width: 60px;
+        }
+
+        .pagination-controls button:disabled {
+            background-color: #6c757d;
+            cursor: not-allowed;
+            opacity: 0.6;
+        }
+
+        .page-numbers {
+            display: flex;
+            gap: 4px;
+            margin: 0 8px;
+        }
+
+        .page-number {
+            padding: 6px 10px;
+            background-color: #f8f9fa;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 13px;
+            transition: all 0.2s;
+        }
+
+        .page-number:hover {
+            background-color: #e9ecef;
+        }
+
+        .page-number.active {
+            background-color: #007bff;
+            color: white;
+            border-color: #007bff;
+        }
+
         @media (max-width: 768px) {
             .input-section {
                 flex-direction: column;
@@ -317,6 +379,25 @@
             
             .cards-container {
                 grid-template-columns: 1fr;
+            }
+
+            /* 移动端分页样式 */
+            .pagination-controls {
+                flex-direction: column;
+                gap: 10px;
+            }
+
+            .pagination-controls button {
+                min-width: 80px;
+            }
+
+            .page-numbers {
+                justify-content: center;
+                margin: 0;
+            }
+
+            .pagination-info {
+                font-size: 12px;
             }
         }
     </style>
@@ -339,7 +420,7 @@
             <div class="input-group">
                 <label for="filterTime">过滤时间:</label>
                 <input type="datetime-local" id="filterTime">
-                <button class="refresh-btn" onclick="loadKeywords()">刷新</button>
+                <button class="refresh-btn" onclick="loadKeywords(1)">刷新</button>
                 <button onclick="clearFilter()">清空过滤</button>
             </div>
             
@@ -358,13 +439,27 @@
 
         <div class="stats">
             <span>总卡片数: <span id="totalCards">0</span></span>
-            <span>总关键词数: <span id="totalKeywords">0</span></span>
+            <span>本页关键词: <span id="totalKeywords">0</span> | 总计: <span id="totalAllKeywords">0</span></span>
         </div>
 
         <div id="message"></div>
         
         <div id="cardsContainer" class="cards-container">
             <div class="loading">正在加载数据...</div>
+        </div>
+
+        <!-- 分页控件 -->
+        <div id="pagination" class="pagination-container" style="display: none;">
+            <div class="pagination-info">
+                <span>共 <span id="totalItems">0</span> 条记录，第 <span id="currentPageSpan">1</span> / <span id="totalPagesSpan">1</span> 页</span>
+            </div>
+            <div class="pagination-controls">
+                <button id="firstPageBtn" onclick="goToPage(1)">首页</button>
+                <button id="prevPageBtn" onclick="goToPrevPage()">上一页</button>
+                <span class="page-numbers" id="pageNumbers"></span>
+                <button id="nextPageBtn" onclick="goToNextPage()">下一页</button>
+                <button id="lastPageBtn" onclick="goToPage(totalPages)">末页</button>
+            </div>
         </div>
     </div>
 
@@ -377,7 +472,7 @@
             await loadDefaultKeyword();
             await loadKeywordTypes();
             setCurrentTime();
-            await loadKeywords();
+            await loadKeywords(1);
         });
 
         // 设置当前时间
@@ -471,7 +566,7 @@
                     
                     // 重新加载下拉选项和卡片
                     await loadDefaultKeyword();
-                    await loadKeywords();
+                    await loadKeywords(1);
                 } else {
                     showMessage('保存失败: ' + result.error, 'error');
                 }
@@ -480,8 +575,13 @@
             }
         }
 
+        // 全局分页状态
+        let currentPage = 1;
+        let totalPages = 1;
+        let currentPagination = null;
+
         // 加载关键词并生成卡片
-        async function loadKeywords() {
+        async function loadKeywords(page = 1) {
             const filterTime = document.getElementById('filterTime').value;
             const selectedType = document.getElementById('keywordType').value.trim();
             const newType = document.getElementById('newType').value.trim();
@@ -503,21 +603,106 @@
                     params.append('type', currentType);
                 }
                 
-                if (params.toString()) {
-                    url += '?' + params.toString();
-                }
+                // 添加分页参数
+                params.append('page', page);
+                params.append('limit', 100);  // 每页100条
+                
+                url += '?' + params.toString();
 
                 const response = await fetch(url);
-                const keywords = await response.json();
+                const result = await response.json();
                 
                 if (response.ok) {
-                    dbKeywords = keywords;
+                    dbKeywords = result.keywords;
+                    currentPagination = result.pagination;
+                    currentPage = result.pagination.currentPage;
+                    totalPages = result.pagination.totalPages;
+                    
                     generateCards();
+                    updatePaginationUI();
                 } else {
-                    throw new Error(keywords.error || '加载失败');
+                    throw new Error(result.error || '加载失败');
                 }
             } catch (error) {
                 cardsContainer.innerHTML = '<div class="error-message">加载关键词失败: ' + error.message + '</div>';
+            }
+        }
+
+        // 更新分页UI
+        function updatePaginationUI() {
+            const paginationContainer = document.getElementById('pagination');
+            
+            if (!currentPagination) {
+                paginationContainer.style.display = 'none';
+                return;
+            }
+            
+            // 显示分页控件
+            paginationContainer.style.display = 'block';
+            
+            // 更新分页信息
+            document.getElementById('totalItems').textContent = currentPagination.totalDocuments;
+            document.getElementById('currentPageSpan').textContent = currentPagination.currentPage;
+            document.getElementById('totalPagesSpan').textContent = currentPagination.totalPages;
+            
+            // 更新按钮状态
+            document.getElementById('firstPageBtn').disabled = !currentPagination.hasPrevPage;
+            document.getElementById('prevPageBtn').disabled = !currentPagination.hasPrevPage;
+            document.getElementById('nextPageBtn').disabled = !currentPagination.hasNextPage;
+            document.getElementById('lastPageBtn').disabled = !currentPagination.hasNextPage;
+            
+            // 生成页码按钮
+            generatePageNumbers();
+        }
+
+        // 生成页码按钮
+        function generatePageNumbers() {
+            const pageNumbers = document.getElementById('pageNumbers');
+            pageNumbers.innerHTML = '';
+            
+            const current = currentPagination.currentPage;
+            const total = currentPagination.totalPages;
+            
+            // 计算显示范围
+            let start = Math.max(1, current - 2);
+            let end = Math.min(total, current + 2);
+            
+            // 确保至少显示5个页码（如果总页数>=5）
+            if (end - start < 4) {
+                if (start === 1) {
+                    end = Math.min(total, start + 4);
+                } else {
+                    start = Math.max(1, end - 4);
+                }
+            }
+            
+            for (let i = start; i <= end; i++) {
+                const pageBtn = document.createElement('span');
+                pageBtn.className = 'page-number' + (i === current ? ' active' : '');
+                pageBtn.textContent = i;
+                pageBtn.onclick = () => goToPage(i);
+                pageNumbers.appendChild(pageBtn);
+            }
+        }
+
+        // 跳转到指定页
+        function goToPage(page) {
+            if (page >= 1 && page <= totalPages && page !== currentPage) {
+                loadKeywords(page);
+            }
+        }
+
+        // 上一页
+        function goToPrevPage() {
+            if (currentPage > 1) {
+                loadKeywords(currentPage - 1);
+            }
+        }
+
+        // 下一页
+        function goToNextPage() {
+            if (currentPage < totalPages) {
+                loadKeywords(currentPage + 1);
             }
         }
 
@@ -709,6 +894,11 @@
         function updateStats(cardCount, keywordCount) {
             document.getElementById('totalCards').textContent = cardCount;
             document.getElementById('totalKeywords').textContent = keywordCount;
+            
+            // 更新总关键词数（从分页信息获取）
+            if (currentPagination) {
+                document.getElementById('totalAllKeywords').textContent = currentPagination.totalDocuments;
+            }
         }
 
 
@@ -716,13 +906,13 @@
         // 监听类型选择框变化
         document.getElementById('keywordType').addEventListener('change', () => {
             // 重新加载数据以应用类型过滤
-            loadKeywords();
+            loadKeywords(1);
         });
 
         // 监听新类型输入框变化
         document.getElementById('newType').addEventListener('input', () => {
             // 重新加载数据以应用类型过滤
-            loadKeywords();
+            loadKeywords(1);
         });
 
         // 打开导入工具
@@ -772,7 +962,7 @@
             document.getElementById('filterTime').value = '';
             document.getElementById('keywordType').value = '';
             document.getElementById('newType').value = '';
-            loadKeywords();
+            loadKeywords(1);
         }
 
         // HTML转义函数

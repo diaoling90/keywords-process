@@ -90,7 +90,9 @@ app.post('/api/defaultkw', (req, res) => {
 // 获取数据库中的关键词
 app.get('/api/keywords', async (req, res) => {
     try {
-        const { before, type } = req.query;
+        const { before, type, page = 1, limit = 100 } = req.query;
+        const pageNum = parseInt(page);
+        const limitNum = parseInt(limit);
         let query;
         
         // 基础查询条件：不显示被忽略的关键词
@@ -143,14 +145,40 @@ app.get('/api/keywords', async (req, res) => {
         
         query = queryConditions.length > 1 ? { $and: queryConditions } : queryConditions[0];
 
-        const keywords = await db.collection(COLLECTION_NAME).find(query).toArray();
+        // 执行查询并添加分页
+        const skip = (pageNum - 1) * limitNum;
+        const keywords = await db.collection(COLLECTION_NAME)
+            .find(query)
+            .skip(skip)
+            .limit(limitNum)
+            .sort({ _id: -1 })  // 按ID倒序，最新的在前面
+            .toArray();
+
+        // 过滤关键词：trim后空格不超过3个
+        const filteredKeywords = keywords.filter(item => {
+            if (!item.keyword) return false;
+            const trimmedKeyword = item.keyword.trim();
+            const spaceCount = (trimmedKeyword.match(/\s/g) || []).length;
+            return spaceCount <= 3;
+        });
+
+        // 获取总数（用于分页计算）
+        const totalDocuments = await db.collection(COLLECTION_NAME).countDocuments(query);
+        
+        // 计算分页信息
+        const totalPages = Math.ceil(totalDocuments / limitNum);
+        const hasNextPage = pageNum < totalPages;
+        const hasPrevPage = pageNum > 1;
         
         // 添加调试信息
         console.log('调试信息:');
         console.log('- 过滤时间:', before || '未设置');
         console.log('- 过滤类型:', type || '未设置');
+        console.log('- 页码:', pageNum, '/', totalPages);
+        console.log('- 每页条数:', limitNum);
         console.log('- 查询条件:', JSON.stringify(query));
-        console.log('- 查询结果数量:', keywords.length);
+        console.log('- 数据库查询结果数量:', keywords.length);
+        console.log('- 空格过滤后数量:', filteredKeywords.length);
         
         // 获取统计信息
         const totalCount = await db.collection(COLLECTION_NAME).countDocuments();
@@ -168,7 +196,23 @@ app.get('/api/keywords', async (req, res) => {
         console.log('- 未使用关键词数量:', unusedCount);
         console.log('- 已使用关键词数量:', usedCount);
         
-        res.json(keywords);
+        // 返回分页数据
+        res.json({
+            keywords: filteredKeywords,
+            pagination: {
+                currentPage: pageNum,
+                totalPages: totalPages,
+                totalDocuments: totalDocuments,
+                limit: limitNum,
+                hasNextPage: hasNextPage,
+                hasPrevPage: hasPrevPage
+            },
+            stats: {
+                totalCount,
+                unusedCount,
+                usedCount
+            }
+        });
     } catch (error) {
         console.error('获取关键词失败:', error);
         res.status(500).json({ error: '获取关键词失败' });
