@@ -258,11 +258,23 @@
             font-weight: bold;
         }
 
+        .card-buttons {
+            display: flex;
+            gap: 8px;
+            margin-top: 10px;
+        }
+
         .trend-btn {
-            width: 100%;
+            flex: 1;
             background-color: #dc3545;
             color: white;
             font-weight: bold;
+            padding: 10px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background-color 0.3s;
         }
 
         .trend-btn:hover {
@@ -272,6 +284,29 @@
         .trend-btn:disabled {
             background-color: #6c757d;
             cursor: not-allowed;
+        }
+
+        .ignore-card-btn {
+            flex: 0 0 auto;
+            background-color: #6c757d;
+            color: white;
+            padding: 10px 15px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background-color 0.3s;
+            white-space: nowrap;
+        }
+
+        .ignore-card-btn:hover {
+            background-color: #545b62;
+        }
+
+        .ignore-card-btn:disabled {
+            background-color: #28a745;
+            cursor: not-allowed;
+            opacity: 0.8;
         }
 
         .error-message {
@@ -398,6 +433,17 @@
 
             .pagination-info {
                 font-size: 12px;
+            }
+
+            /* 移动端卡片按钮样式 */
+            .card-buttons {
+                flex-direction: column;
+                gap: 8px;
+            }
+
+            .trend-btn, .ignore-card-btn {
+                flex: none;
+                width: 100%;
             }
         }
     </style>
@@ -706,6 +752,56 @@
             }
         }
 
+        // 忽略卡片中的所有关键词
+        async function ignoreCardKeywords(button) {
+            try {
+                const keywords = JSON.parse(button.getAttribute('data-keywords'));
+                
+                if (!keywords || keywords.length === 0) {
+                    showMessage('没有关键词可以忽略', 'error');
+                    return;
+                }
+
+                // 更新按钮状态
+                const originalText = button.textContent;
+                button.disabled = true;
+                button.textContent = '忽略中...';
+
+                // 调用批量更新API
+                const response = await fetch('/api/keywords/use-batch', {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        keywords: keywords
+                    })
+                });
+
+                const result = await response.json();
+
+                if (response.ok && result.success) {
+                    // 更新按钮显示为已忽略状态
+                    button.textContent = '已忽略';
+                    button.style.backgroundColor = '#28a745';
+                    button.disabled = true;
+
+                    showMessage(`已忽略 ${keywords.length} 个关键词`, 'success');
+
+                } else {
+                    throw new Error(result.error || '忽略失败');
+                }
+
+            } catch (error) {
+                console.error('忽略关键词失败:', error);
+                showMessage('忽略失败: ' + error.message, 'error');
+                
+                // 恢复按钮状态
+                button.disabled = false;
+                button.textContent = originalText;
+            }
+        }
+
         // 生成卡片
         function generateCards() {
             const cardsContainer = document.getElementById('cardsContainer');
@@ -762,12 +858,21 @@
                                         </span>`;
                             }).join('')}
                         </div>
-                        <button class="trend-btn" 
-                                data-keywords='${JSON.stringify(allKeywords)}' 
-                                data-keyword-ids='${JSON.stringify(keywordIds)}'
-                                onclick="openGoogleTrendsFromButton(this)">
-                            查看 Google 趋势
-                        </button>
+                        <div class="card-buttons">
+                            <button class="trend-btn" 
+                                    data-keywords='${JSON.stringify(allKeywords)}' 
+                                    data-keyword-ids='${JSON.stringify(keywordIds)}'
+                                    onclick="openGoogleTrendsFromButton(this)">
+                                查看 Google 趋势
+                            </button>
+                            <button class="ignore-card-btn" 
+                                    data-keywords='${JSON.stringify(allKeywords)}' 
+                                    data-keyword-ids='${JSON.stringify(keywordIds)}'
+                                    onclick="ignoreCardKeywords(this)"
+                                    title="忽略此卡片所有关键词">
+                                忽略卡片
+                            </button>
+                        </div>
                     </div>
                 `;
             });
