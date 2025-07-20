@@ -14,6 +14,13 @@ class KeywordCollector {
         if (window.location.href.includes('trends.google.com/trends/explore')) {
             console.log('关键词采集器已启动');
         }
+        
+        // 监听来自intercept.js的postMessage
+        window.addEventListener('message', (event) => {
+            if (event.data.type === 'TRENDS_KEYWORDS_FOUND' && event.data.source === 'intercept.js') {
+                this.onKeywordsFound(event.data.keywords);
+            }
+        });
     }
     
     // 当拦截器发现关键词时被调用
@@ -107,13 +114,8 @@ function injectMainScript() {
 }
 
 // 初始化
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', () => {
-        new KeywordCollector();
-    });
-} else {
-    new KeywordCollector();
-}
+// 立即初始化KeywordCollector
+new KeywordCollector();
 
 // 注入数据处理脚本
 if (document.readyState === 'complete') {

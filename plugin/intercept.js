@@ -49,10 +49,7 @@
         console.log('🎉 拦截到API数据');
         
         try {
-            let cleanData = responseText;
-            if (responseText.startsWith(')]}\'')) {
-                cleanData = responseText.replace(/^\)\]\}'\n/, '');
-            }
+            let cleanData = cleanTrendsResponse(responseText);
             
             const data = JSON.parse(cleanData);
             
@@ -73,10 +70,14 @@
                     url: url
                 };
                 
-                // 通知content script
-                if (window.keywordCollector) {
-                    window.keywordCollector.onKeywordsFound(keywords);
-                }
+                // 通过postMessage通知content script
+                window.postMessage({
+                    type: 'TRENDS_KEYWORDS_FOUND',
+                    keywords: keywords,
+                    source: 'intercept.js'
+                }, '*');
+                
+                console.log('✓ 已通过postMessage发送关键词数据');
                 
                 showNotification(`发现 ${keywords.length} 个高价值关键词！`);
             }
@@ -87,48 +88,45 @@
     }
 
     // 从API数据中提取关键词
-function extractKeywordsFromAPI(data) {
-    const keywords = [];
-    
-    try {
-        function searchKeywords(obj) {
-            if (!obj || typeof obj !== 'object') return;
-            
-            if (Array.isArray(obj)) {
-                obj.forEach(item => {
-                    if (item && typeof item === 'object') {
-                        // 只查找 query 和 value 字段
-                        if (item.query && item.value !== undefined) {
-                            const numValue = parseFloat(item.value);
-                            
-                            if (numValue >= 300) {
-                                keywords.push({
-                                    keyword: item.query,
-                                    value: numValue
-                                });
+    function extractKeywordsFromAPI(data) {
+        const keywords = [];
+        
+        try {
+            // 优先处理标准的Google Trends数据结构
+            if (data && data.default && data.default.rankedList) {
+                data.default.rankedList.forEach(rankedItem => {
+                    if (rankedItem.rankedKeyword && Array.isArray(rankedItem.rankedKeyword)) {
+                        rankedItem.rankedKeyword.forEach(item => {
+                            if (item.query && item.value !== undefined) {
+                                const numValue = parseFloat(item.value);
+                                
+                                if (numValue >= 300) {
+                                    keywords.push({
+                                        keyword: item.query,
+                                        value: numValue
+                                    });
+                                    console.log(`✓ 发现高价值关键词: "${item.query}" (${numValue})`);
+                                }
                             }
-                        }
-                        
-                        // 继续递归搜索
-                        searchKeywords(item);
+                        });
                     }
                 });
-            } else {
-                // 搜索对象的所有属性
-                for (let key in obj) {
-                    searchKeywords(obj[key]);
-                }
             }
+            
+            
+        } catch (error) {
+            console.error('提取关键词时出错:', error);
         }
         
-        searchKeywords(data);
-        
-    } catch (error) {
-        console.error('提取关键词时出错:', error);
+        return keywords;
     }
-    
-    return keywords;
-}
+
+    function cleanTrendsResponse(rawText) {
+        // 去除所有开头非JSON字符，直到第一个有效 JSON 的大括号为止
+        const firstBrace = rawText.indexOf('{');
+        if (firstBrace === -1) throw new Error('找不到 JSON 起始点');
+        return rawText.slice(firstBrace);
+      }
 
     // 显示通知
     function showNotification(message) {
