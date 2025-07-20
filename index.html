@@ -97,6 +97,23 @@
             background-color: #e55a00;
         }
 
+        .copy-btn {
+            background-color: #6f42c1;
+            padding: 8px 12px;
+            font-size: 12px;
+            min-width: auto;
+            position: relative;
+        }
+
+        .copy-btn:hover {
+            background-color: #5a32a3;
+        }
+
+        .copy-btn::before {
+            content: "📋";
+            margin-right: 4px;
+        }
+
         .cards-container {
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
@@ -316,7 +333,7 @@
                 </select>
                 <input type="text" id="newKeyword" placeholder="或输入新关键词">
                 <button onclick="saveMainKeyword()">保存</button>
-                <button onclick="copyMainKeyword()" title="复制主关键词">复制</button>
+                <button class="copy-btn" onclick="copyMainKeyword()" title="点击复制主关键词">复制</button>
             </div>
             
             <div class="input-group">
@@ -853,7 +870,18 @@
                     console.log('使用 execCommand 复制:', success ? '成功' : '失败');
                 }
                 
-                showMessage(`已复制主关键词: ${keyword}`, 'success');
+                showMessage(`✅ 已复制: ${keyword}`, 'success');
+                
+                // 短暂改变按钮样式表示复制成功
+                const copyButton = document.querySelector('.copy-btn');
+                const originalText = copyButton.textContent;
+                copyButton.textContent = '已复制!';
+                copyButton.style.backgroundColor = '#28a745';
+                
+                setTimeout(() => {
+                    copyButton.textContent = originalText;
+                    copyButton.style.backgroundColor = '#6f42c1';
+                }, 1500);
                 
             } catch (error) {
                 console.error('复制主关键词失败:', error);
