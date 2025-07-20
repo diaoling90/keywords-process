@@ -97,6 +97,28 @@
             background-color: #e55a00;
         }
 
+        .follow-filter-btn {
+            background-color: #ffc107;
+            color: #212529;
+            border: 1px solid #ffc107;
+        }
+
+        .follow-filter-btn:hover {
+            background-color: #e0a800;
+            border-color: #d39e00;
+        }
+
+        .follow-filter-btn.active {
+            background-color: #ff6b35;
+            color: white;
+            border-color: #ff6b35;
+        }
+
+        .follow-filter-btn.active:hover {
+            background-color: #e55a2b;
+            border-color: #e55a2b;
+        }
+
         .copy-btn {
             background-color: #6f42c1;
             padding: 8px 12px;
@@ -150,41 +172,55 @@
             margin-bottom: 12px;
         }
 
-        .keyword-item {
-            display: inline-flex;
-            align-items: center;
-            background-color: #f8f9fa;
-            padding: 4px 8px;
-            margin: 2px;
-            border-radius: 4px;
-            font-size: 12px;
-            color: #495057;
-            border: 1px solid #dee2e6;
-            cursor: pointer;
-            transition: all 0.2s ease;
-            user-select: none;
-            position: relative;
-        }
+
 
         .keyword-text {
-            margin-right: 6px;
+            white-space: nowrap;
         }
 
-        .ignore-btn {
-            width: 16px;
-            height: 16px;
+        .follow-btn {
+            width: 20px;
+            height: 20px;
             border-radius: 50%;
-            background-color: #dc3545;
-            color: white;
+            background-color: #ffc107;
+            color: #212529;
             border: none;
             cursor: pointer;
-            font-size: 10px;
+            font-size: 13px;
             line-height: 1;
             display: flex;
             align-items: center;
             justify-content: center;
             transition: all 0.2s ease;
-            margin-left: 4px;
+            flex-shrink: 0;
+        }
+
+        .follow-btn.followed {
+            background-color: #ff6b35;
+            color: #fff;
+            box-shadow: 0 0 8px rgba(255, 107, 53, 0.4);
+        }
+
+        .follow-btn:hover {
+            transform: scale(1.1);
+            background-color: #e0a800;
+        }
+
+        .ignore-btn {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background-color: #dc3545;
+            color: white;
+            border: none;
+            cursor: pointer;
+            font-size: 13px;
+            line-height: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s ease;
+            flex-shrink: 0;
         }
 
         .ignore-btn:hover {
@@ -207,10 +243,28 @@
             transform: none;
         }
 
+        .keyword-item {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            margin: 2px 4px 2px 0;
+            padding: 6px 10px;
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 20px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            flex-wrap: nowrap;
+            font-size: 13px;
+            color: #495057;
+            user-select: none;
+        }
+
         .keyword-item:hover {
             background-color: #e9ecef;
+            border-color: #adb5bd;
             transform: translateY(-1px);
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            box-shadow: 0 2px 6px rgba(0,0,0,0.15);
         }
 
         .keyword-item:active {
@@ -485,6 +539,24 @@
                 width: 100%;
             }
 
+            /* 移动端关注和忽略按钮 */
+            .follow-btn, .ignore-btn {
+                width: 22px;
+                height: 22px;
+                font-size: 14px;
+            }
+            
+            .keyword-item {
+                font-size: 14px;
+                padding: 8px 12px;
+                gap: 8px;
+            }
+
+            .follow-filter-btn {
+                font-size: 12px;
+                padding: 6px 10px;
+            }
+
             /* 移动端Toast样式 */
             .toast {
                 top: 10px;
@@ -528,12 +600,15 @@
             
             <div class="input-group">
                 <button class="import-btn" onclick="openImportTool()">导入Excel文件</button>
+                <button class="follow-filter-btn" id="followFilterBtn" onclick="toggleFollowFilter()" title="筛选持续关注的关键词">
+                    ★ 只看关注
+                </button>
             </div>
         </div>
 
         <div class="stats">
             <span>总卡片数: <span id="totalCards">0</span></span>
-            <span>本页关键词: <span id="totalKeywords">0</span> | 总计: <span id="totalAllKeywords">0</span></span>
+            <span>本页关键词: <span id="totalKeywords">0</span> | 总计: <span id="totalAllKeywords">0</span> | <span id="filterStatus">显示全部</span></span>
         </div>
 
         <!-- Toast消息将动态创建，不需要固定的message div -->
@@ -673,6 +748,7 @@
         let currentPage = 1;
         let totalPages = 1;
         let currentPagination = null;
+        let isFollowFilterActive = false;
 
         // 加载关键词并生成卡片
         async function loadKeywords(page = 1) {
@@ -695,6 +771,11 @@
                 
                 if (currentType) {
                     params.append('type', currentType);
+                }
+                
+                // 添加关注筛选参数
+                if (isFollowFilterActive) {
+                    params.append('followOnly', 'true');
                 }
                 
                 // 添加分页参数
@@ -850,6 +931,74 @@
             }
         }
 
+        // 切换关键词关注状态
+        async function toggleFollow(event, keywordId, button) {
+            event.stopPropagation(); // 防止触发父元素的点击事件
+            
+            try {
+                const isCurrentlyFollowed = button.getAttribute('data-followed') === 'true';
+                const newFollowStatus = !isCurrentlyFollowed;
+                
+                // 更新按钮状态
+                button.disabled = true;
+                
+                const response = await fetch('/api/keywords/follow', {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        keywordId: keywordId,
+                        followStatus: newFollowStatus
+                    })
+                });
+
+                const result = await response.json();
+
+                if (response.ok && result.success) {
+                    // 更新按钮显示
+                    button.setAttribute('data-followed', newFollowStatus);
+                    button.textContent = newFollowStatus ? '★' : '☆';
+                    button.className = `follow-btn ${newFollowStatus ? 'followed' : ''}`;
+                    button.title = newFollowStatus ? '取消关注' : '持续关注';
+                    
+                    showMessage(newFollowStatus ? '已添加到持续关注' : '已取消关注', 'success');
+                } else {
+                    throw new Error(result.error || '操作失败');
+                }
+
+            } catch (error) {
+                console.error('切换关注状态失败:', error);
+                showMessage('操作失败: ' + error.message, 'error');
+            } finally {
+                button.disabled = false;
+            }
+        }
+
+        // 切换关注筛选
+        function toggleFollowFilter() {
+            isFollowFilterActive = !isFollowFilterActive;
+            const button = document.getElementById('followFilterBtn');
+            const filterStatus = document.getElementById('filterStatus');
+            
+            if (isFollowFilterActive) {
+                button.classList.add('active');
+                button.textContent = '★ 显示全部';
+                filterStatus.textContent = '仅关注';
+                filterStatus.style.color = '#ff6b35';
+                filterStatus.style.fontWeight = 'bold';
+            } else {
+                button.classList.remove('active');
+                button.textContent = '★ 只看关注';
+                filterStatus.textContent = '显示全部';
+                filterStatus.style.color = '';
+                filterStatus.style.fontWeight = '';
+            }
+            
+            // 重新加载数据
+            loadKeywords(1);
+        }
+
         // 生成卡片
         function generateCards() {
             const cardsContainer = document.getElementById('cardsContainer');
@@ -895,11 +1044,19 @@
                                     infoText = ` (API: ${trendPercentage}%)`;
                                 }
                                 
+                                const isFollowed = keywordData?.follow_status === true;
+                                
                                 return `<span class="keyword-item ${source === 'google_trends_api' ? 'api-keyword' : ''}" 
                                               data-keyword="${safeKeyword}"
                                               onclick="copyKeywordFromElement(this)" 
                                               title="单击复制${infoText ? ' | ' + infoText : ''}">
                                             <span class="keyword-text">${safeKeyword}${infoText}</span>
+                                            ${keywordId ? `<button class="follow-btn ${isFollowed ? 'followed' : ''}" 
+                                                                    title="${isFollowed ? '取消关注' : '持续关注'}"
+                                                                    onclick="toggleFollow(event, '${keywordId}', this)"
+                                                                    data-followed="${isFollowed}">
+                                                                ${isFollowed ? '★' : '☆'}
+                                                            </button>` : ''}
                                             ${keywordId ? `<button class="ignore-btn" 
                                                                     title="忽略此关键词"
                                                                     onclick="ignoreKeyword(event, '${keywordId}')">×</button>` : ''}
@@ -1130,6 +1287,19 @@
             document.getElementById('filterTime').value = '';
             document.getElementById('keywordType').value = '';
             document.getElementById('newType').value = '';
+            
+            // 重置关注筛选状态
+            isFollowFilterActive = false;
+            const followFilterBtn = document.getElementById('followFilterBtn');
+            followFilterBtn.classList.remove('active');
+            followFilterBtn.textContent = '★ 只看关注';
+            
+            // 重置筛选状态显示
+            const filterStatus = document.getElementById('filterStatus');
+            filterStatus.textContent = '显示全部';
+            filterStatus.style.color = '';
+            filterStatus.style.fontWeight = '';
+            
             loadKeywords(1);
         }
 

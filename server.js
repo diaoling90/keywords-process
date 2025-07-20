@@ -90,7 +90,7 @@ app.post('/api/defaultkw', (req, res) => {
 // 获取数据库中的关键词
 app.get('/api/keywords', async (req, res) => {
     try {
-        const { before, type, page = 1, limit = 100 } = req.query;
+        const { before, type, page = 1, limit = 100, followOnly } = req.query;
         const pageNum = parseInt(page);
         const limitNum = parseInt(limit);
         let query;
@@ -134,6 +134,14 @@ app.get('/api/keywords', async (req, res) => {
             };
         }
         
+        // 关注筛选条件
+        let followQuery = {};
+        if (followOnly === 'true') {
+            followQuery = {
+                follow_status: true
+            };
+        }
+        
         // 组合所有查询条件
         const queryConditions = [baseQuery];
         if (Object.keys(typeQuery).length > 0) {
@@ -141,6 +149,9 @@ app.get('/api/keywords', async (req, res) => {
         }
         if (Object.keys(timeQuery).length > 0) {
             queryConditions.push(timeQuery);
+        }
+        if (Object.keys(followQuery).length > 0) {
+            queryConditions.push(followQuery);
         }
         
         query = queryConditions.length > 1 ? { $and: queryConditions } : queryConditions[0];
@@ -174,6 +185,7 @@ app.get('/api/keywords', async (req, res) => {
         console.log('调试信息:');
         console.log('- 过滤时间:', before || '未设置');
         console.log('- 过滤类型:', type || '未设置');
+        console.log('- 关注筛选:', followOnly === 'true' ? '仅关注' : '全部');
         console.log('- 页码:', pageNum, '/', totalPages);
         console.log('- 每页条数:', limitNum);
         console.log('- 查询条件:', JSON.stringify(query));
@@ -331,6 +343,32 @@ app.put('/api/keywords/use-batch', async (req, res) => {
         res.json({ success: true });
     } catch (error) {
         res.status(500).json({ error: '批量更新使用时间失败' });
+    }
+});
+
+// 切换关键词关注状态
+app.put('/api/keywords/follow', async (req, res) => {
+    try {
+        const { keywordId, followStatus } = req.body;
+        
+        if (!keywordId) {
+            return res.status(400).json({ error: '关键词ID不能为空' });
+        }
+
+        const { ObjectId } = require('mongodb');
+        const result = await db.collection(COLLECTION_NAME).updateOne(
+            { _id: new ObjectId(keywordId) },
+            { $set: { follow_status: followStatus === true } }
+        );
+
+        if (result.matchedCount === 0) {
+            return res.status(404).json({ error: '关键词未找到' });
+        }
+
+        res.json({ success: true });
+    } catch (error) {
+        console.error('切换关注状态失败:', error);
+        res.status(500).json({ error: '切换关注状态失败' });
     }
 });
 
