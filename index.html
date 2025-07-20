@@ -397,6 +397,45 @@
             border-color: #007bff;
         }
 
+        /* Toast消息样式 */
+        .toast {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 12px 20px;
+            border-radius: 6px;
+            color: white;
+            font-size: 14px;
+            font-weight: 500;
+            z-index: 9999;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+            transform: translateX(100%);
+            transition: transform 0.3s ease;
+            max-width: 300px;
+            word-wrap: break-word;
+        }
+
+        .toast-show {
+            transform: translateX(0);
+        }
+
+        .toast-success {
+            background-color: #28a745;
+        }
+
+        .toast-error {
+            background-color: #dc3545;
+        }
+
+        .toast-info {
+            background-color: #007bff;
+        }
+
+        .toast-warning {
+            background-color: #ffc107;
+            color: #212529;
+        }
+
         @media (max-width: 768px) {
             .input-section {
                 flex-direction: column;
@@ -445,6 +484,15 @@
                 flex: none;
                 width: 100%;
             }
+
+            /* 移动端Toast样式 */
+            .toast {
+                top: 10px;
+                right: 10px;
+                left: 10px;
+                max-width: none;
+                font-size: 13px;
+            }
         }
     </style>
 </head>
@@ -488,7 +536,7 @@
             <span>本页关键词: <span id="totalKeywords">0</span> | 总计: <span id="totalAllKeywords">0</span></span>
         </div>
 
-        <div id="message"></div>
+        <!-- Toast消息将动态创建，不需要固定的message div -->
         
         <div id="cardsContainer" class="cards-container">
             <div class="loading">正在加载数据...</div>
@@ -984,14 +1032,29 @@
             }
         }
 
-        // 显示消息
+        // 显示Toast消息
         function showMessage(message, type) {
-            const messageDiv = document.getElementById('message');
-            messageDiv.innerHTML = `<div class="${type}-message">${message}</div>`;
+            // 创建toast元素
+            const toast = document.createElement('div');
+            toast.className = `toast toast-${type}`;
+            toast.textContent = message;
             
-            // 3秒后清除消息
+            // 添加到页面
+            document.body.appendChild(toast);
+            
+            // 触发动画
             setTimeout(() => {
-                messageDiv.innerHTML = '';
+                toast.classList.add('toast-show');
+            }, 10);
+            
+            // 3秒后移除
+            setTimeout(() => {
+                toast.classList.remove('toast-show');
+                setTimeout(() => {
+                    if (toast.parentNode) {
+                        toast.parentNode.removeChild(toast);
+                    }
+                }, 300);
             }, 3000);
         }
 
